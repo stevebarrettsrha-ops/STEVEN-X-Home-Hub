@@ -1,0 +1,15 @@
+# User media — dropped into the system folders locally, never committed.
+/scripture-game/*
+/movies/*
+/scripture/*
+/music/*
+/books/*
+/games/*
+# keep the folders themselves (and any placeholder) tracked
+!*/.gitkeep
+
+# Node / OS cruft
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
