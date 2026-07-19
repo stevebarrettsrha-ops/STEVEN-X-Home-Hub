@@ -5,8 +5,9 @@
 /music/*
 /books/*
 /games/*
-# keep the folders themselves (and any placeholder) tracked
+# keep the folders themselves + their guide file tracked
 !*/.gitkeep
+!*/README.txt
 
 # Node / OS cruft
 node_modules/
