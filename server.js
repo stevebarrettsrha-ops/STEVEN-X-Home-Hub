@@ -66,6 +66,7 @@ function walk(sysId, baseDir, rel, exts, out, depth) {
   for (const e of entries) {
     if (out.length > 800) break;
     if (e.name.startsWith(".")) continue;
+    if (e.isFile() && e.name.toLowerCase() === "readme.txt") continue;  // skip the drop-in guide
     const childRel = rel ? rel + "/" + e.name : e.name;
     if (e.isDirectory()) {
       walk(sysId, baseDir, childRel, exts, out, depth + 1);

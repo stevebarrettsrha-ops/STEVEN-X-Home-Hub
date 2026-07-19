@@ -465,7 +465,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
               <li><code>scripture-game/</code> — your BERĔSHITH build</li>
               <li><code>movies/</code> · <code>music/</code> · <code>scripture/</code> · <code>books/</code> · <code>games/</code></li>
             </ol>
-            <p style="margin-top:10px">On each system page, press <b style="color:var(--txt)">Connect folder</b> to scan and play your files right inside the hub.</p>
+            <p style="margin-top:10px">Drop your media into these folders, then start the home server (right) — every library loads into the hub automatically.</p>
           </div>
           <div class="set-card">
             <h3>Home Server <span id="serverBadge" style="font-size:10px;letter-spacing:.14em;color:var(--mut)">· not running</span></h3>
@@ -475,12 +475,12 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
               <li>Double-click <code>start-windows.bat</code>, <code>start-mac.command</code>, or run <code>bash START.sh</code> on Linux.</li>
               <li>On any device, open the <b style="color:var(--txt)">http://…:8080</b> address it prints.</li>
             </ol>
-            <p style="margin-top:10px">When you open the hub <b style="color:var(--txt)">through the server</b>, every library loads automatically and videos stream with instant seeking. Opening the file directly still works with <b>Connect folder</b>.</p>
+            <p style="margin-top:10px">When you open the hub <b style="color:var(--txt)">through the server</b>, every library loads automatically and videos stream with instant seeking.</p>
           </div>
           <div class="set-card">
             <h3>Tips</h3>
             <ol>
-              <li>Chrome or Edge give the smoothest folder scanning; Firefox uses a picker fallback.</li>
+              <li>Run the home server, then open the hub from the address it prints — libraries load themselves.</li>
               <li>Movies and music play inside the hub. Books and scripture open in a new tab.</li>
               <li>Multi-file HTML games launch best from a tile — add them in <code>CONFIG.launchers</code>.</li>
               <li>Press the fullscreen button for TV mode.</li>
@@ -759,10 +759,9 @@ function stopHero(){ if(heroIv) clearInterval(heroIv); heroIv=null; }
 const libraries = {};   // sysId -> [{name,path,file|handle|url}]
 
 /* ============================================================
-   HOME SERVER — when the hub is opened THROUGH server.js it loads
-   every library automatically and streams media over the LAN
-   (with instant seeking). Opening the file directly (file://)
-   falls back to the manual "Connect folder" flow below.
+   HOME SERVER — the hub is opened THROUGH server.js, which loads
+   every library automatically from the system folders and streams
+   media over the LAN with instant seeking.
    ============================================================ */
 let SERVER = false;
 async function detectServer(){
@@ -819,66 +818,18 @@ function buildSystemPages(){
           </a>`).join("")}
       </div>` : ""}
       <div class="section-head"><h2>Library</h2><div class="rule"></div><span class="count" id="count-${s.id}"></span></div>
-      <div class="connect-bar">
-        <button class="btn" id="connect-${s.id}">${svgIcon("folder")} Connect folder</button>
-        <span class="hint">Scan a folder for ${s.exts.join(", ")} files</span>
-      </div>
       <div id="lib-${s.id}">
         <div class="empty">
           ${svgIcon(s.icon)}
-          <b>No folder connected yet</b>
-          <p>Press <b>Connect folder</b> and choose your <b>${s.id.replace("-"," ")}</b> folder. ${s.kind==="video"?"Films play in the built-in theatre.":s.kind==="audio"?"Tracks play in the dock below with a live visualizer.":s.kind==="docs"?"Documents open in a fresh tab for reading.":"Single-file HTML games open instantly; multi-file games launch best from a tile above."}</p>
+          <b>No ${s.name.toLowerCase()} yet</b>
+          <p>Drop your files into the <b>${s.id}/</b> folder next to <b>server.js</b>, then start the STEVEN X home server (or refresh). ${s.kind==="video"?"Films play in the built-in theatre.":s.kind==="audio"?"Tracks play in the dock below with a live visualizer.":s.kind==="docs"?"Documents open in a fresh tab for reading.":"Single-file HTML games open instantly; multi-file games launch best from a tile above."}</p>
         </div>
       </div>`;
-    $("#connect-"+s.id).addEventListener("click", ()=>connectFolder(s));
   }
 }
 
-async function connectFolder(sys){
-  let items = [];
-  try{
-    if(window.showDirectoryPicker){
-      const dir = await showDirectoryPicker();
-      await walkDir(dir, "", items, sys.exts, 0);
-    } else {
-      items = await pickViaInput(sys.exts);
-    }
-  }catch(err){
-    if(err && err.name==="AbortError") return;
-    toast("Couldn't read that folder — try Chrome or Edge for best results");
-    return;
-  }
-  if(!items.length){ toast("No matching files found in that folder"); return; }
-  items.sort((a,b)=>a.name.localeCompare(b.name));
-  libraries[sys.id] = items.slice(0,600);
-  renderLibrary(sys);
-  toast(`${libraries[sys.id].length} item${items.length>1?"s":""} loaded into ${sys.name}`);
-}
-
-async function walkDir(dir, path, out, exts, depth){
-  if(depth>3 || out.length>600) return;
-  for await (const [name, handle] of dir.entries()){
-    if(out.length>600) return;
-    if(handle.kind==="file"){
-      if(exts.includes(extOf(name))) out.push({name, path:path+name, handle});
-    } else if(handle.kind==="directory" && !name.startsWith(".")){
-      await walkDir(handle, path+name+"/", out, exts, depth+1);
-    }
-  }
-}
-function pickViaInput(exts){
-  return new Promise((resolve,reject)=>{
-    const inp = document.createElement("input");
-    inp.type="file"; inp.webkitdirectory = true; inp.multiple = true;
-    inp.onchange = ()=>{
-      resolve([...inp.files]
-        .filter(f=>exts.includes(extOf(f.name)))
-        .map(f=>({name:f.name, path:f.webkitRelativePath||f.name, file:f})));
-    };
-    inp.oncancel = ()=>reject({name:"AbortError"});
-    inp.click();
-  });
-}
+// Libraries are populated by the home server (see loadFromServer above);
+// items carry a ready-to-play .url, so no in-browser folder picker is needed.
 async function fileOf(item){
   if(item.file) return item.file;
   if(item.handle){ item.file = await item.handle.getFile(); return item.file; }
