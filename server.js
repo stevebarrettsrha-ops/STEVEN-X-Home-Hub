@@ -19,9 +19,23 @@ const http = require("http");
 const fs   = require("fs");
 const path = require("path");
 const os   = require("os");
+const { spawn } = require("child_process");
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
 const ROOT = __dirname;                       // folder this file lives in
+const APPS_DIR = path.join(ROOT, "apps");     // full apps live here (see get-apps.js)
+
+// ---- full apps (REEL, ARCADE, …) — registry comes from apps.json -----------
+let APPS = [];
+try {
+  APPS = (JSON.parse(fs.readFileSync(path.join(ROOT, "apps.json"), "utf8")).apps || [])
+    .filter(a => a.enabled !== false);
+} catch (e) { console.error("  (apps.json missing or invalid — full apps disabled: " + e.message + ")"); }
+
+const appDir       = a => path.join(APPS_DIR, a.id, a.subdir || "");
+const appEntry     = a => a.type === "node" ? path.join(appDir(a), a.serverFile || "server.js")
+                                            : path.join(appDir(a), "index.html");
+const appInstalled = a => { try { return fs.existsSync(appEntry(a)); } catch (e) { return false; } };
 
 // Each hub "system" maps to a folder of the same name and a set of file types.
 // Keep these in sync with the SYSTEMS list inside index.html.
@@ -46,7 +60,11 @@ const MIME = {
   ".mp3":"audio/mpeg", ".wav":"audio/wav", ".ogg":"audio/ogg",
   ".m4a":"audio/mp4", ".flac":"audio/flac", ".aac":"audio/aac", ".opus":"audio/ogg",
   ".jpg":"image/jpeg", ".jpeg":"image/jpeg", ".png":"image/png",
-  ".webp":"image/webp", ".gif":"image/gif",
+  ".webp":"image/webp", ".gif":"image/gif", ".ico":"image/x-icon",
+  ".wasm":"application/wasm", ".zip":"application/zip",
+  ".ttf":"font/ttf", ".otf":"font/otf", ".woff":"font/woff", ".woff2":"font/woff2",
+  ".xml":"application/xml", ".data":"application/octet-stream",
+  ".mem":"application/octet-stream", ".map":"application/json",
 };
 const mimeOf = p => MIME[path.extname(p).toLowerCase()] || "application/octet-stream";
 const extOf  = n => (n.includes(".") ? n.split(".").pop().toLowerCase() : "");
@@ -118,6 +136,86 @@ function safeResolve(base, relPath) {
   return full;
 }
 
+/* ============================================================================
+   APP SUPERVISOR — starts each Node-based app (REEL, ARCADE, PACKR …) as a
+   child process on its own port, restarts it if it crashes, and shuts every-
+   thing down together on Ctrl+C. Static apps are served by the hub directly.
+   ============================================================================ */
+const children = {};   // app.id -> { proc, restarts, state: starting|running|failed|stopped }
+
+function startApp(app) {
+  if (!appInstalled(app)) return;
+  const entry = appEntry(app);
+  const env = Object.assign({}, process.env);
+  env[app.portEnv || "PORT"] = String(app.port);
+  const proc = spawn(process.execPath, [entry], { cwd: appDir(app), env });
+  const c = children[app.id] = children[app.id] || { restarts: 0 };
+  c.proc = proc; c.state = "starting";
+
+  const tag = "[" + app.id + "] ";
+  const relay = data => {
+    for (const line of String(data).split("\n")) if (line.trim()) console.log("  " + tag + line);
+  };
+  proc.stdout.on("data", relay);
+  proc.stderr.on("data", relay);
+  proc.on("exit", (code, sig) => {
+    if (shuttingDown) { c.state = "stopped"; return; }
+    c.state = "failed";
+    console.error("  " + tag + "exited (" + (sig || code) + ")");
+    if (c.restarts < 5) {
+      c.restarts++;
+      const wait = Math.min(30, 2 ** c.restarts);
+      console.error("  " + tag + "restarting in " + wait + "s (attempt " + c.restarts + "/5)");
+      setTimeout(() => startApp(app), wait * 1000);
+    } else {
+      console.error("  " + tag + "gave up after 5 restarts — fix the app, then restart the hub");
+    }
+  });
+}
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("\n  Shutting down the hub and every app…");
+  for (const id of Object.keys(children)) {
+    const c = children[id];
+    if (c.proc && c.proc.exitCode === null) { try { c.proc.kill(); } catch (e) {} }
+  }
+  server.close();
+  // Any app that ignores the polite stop gets force-killed before we leave —
+  // no orphaned servers holding ports after the hub window closes.
+  setTimeout(() => {
+    for (const id of Object.keys(children)) {
+      const c = children[id];
+      if (c.proc && c.proc.exitCode === null) { try { c.proc.kill("SIGKILL"); } catch (e) {} }
+    }
+    process.exit(0);
+  }, 1500);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+// Ask a child app whether it is answering HTTP yet (used by the loading screens).
+function probeApp(app, cb) {
+  const req = http.get({ host: "127.0.0.1", port: app.port, path: "/", timeout: 1500 }, res => {
+    res.resume();
+    cb(res.statusCode > 0);
+  });
+  req.on("timeout", () => { req.destroy(); cb(false); });
+  req.on("error", () => cb(false));
+}
+
+// Is this request coming from the server machine itself? (PACKR is local-only.)
+function requestIsLocal(req) {
+  const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+  if (ip === "127.0.0.1" || ip === "::1") return true;
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets))
+    for (const net of nets[name] || []) if (net.address === ip) return true;
+  return false;
+}
+
 const server = http.createServer((req, res) => {
   let pathname = "/";
   try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
@@ -126,6 +224,59 @@ const server = http.createServer((req, res) => {
   if (pathname === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ ok: true, name: "STEVEN X", version: "1.0" }));
+  }
+
+  // ---- full apps: registry + live status ------------------------------------
+  if (pathname === "/api/apps") {
+    const list = APPS.map(a => ({
+      id: a.id, name: a.name, title: a.title, tagline: a.tagline, desc: a.desc,
+      type: a.type, port: a.port || null, icon: a.icon, fx: a.fx,
+      color1: a.color1, color2: a.color2, bootLines: a.bootLines || [],
+      localOnly: !!a.localOnly,
+      installed: appInstalled(a),
+      state: a.type === "node" ? ((children[a.id] || {}).state || "stopped") : "static",
+      url: a.type === "static" ? "/apps/" + a.id + "/" : null,   // node apps: client builds host:port
+    }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ apps: list, youAreLocal: requestIsLocal(req) }));
+  }
+
+  // Live readiness probe for one app — the launch screen polls this.
+  if (pathname === "/api/app-status") {
+    const id  = new URL(req.url, "http://x").searchParams.get("id") || "";
+    const app = APPS.find(a => a.id === id);
+    if (!app) { res.writeHead(404, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "unknown app" })); }
+    const reply = ready => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ id, installed: appInstalled(app), ready, state: app.type === "node" ? ((children[id] || {}).state || "stopped") : "static" }));
+    };
+    if (!appInstalled(app)) return reply(false);
+    if (app.type === "static") return reply(true);
+    return probeApp(app, ok => {
+      const c = children[id];
+      if (ok && c && c.state === "starting") { c.state = "running"; c.restarts = 0; }
+      reply(ok);
+    });
+  }
+
+  // Animated loading screen: /launch/<id>
+  if (pathname.startsWith("/launch/")) {
+    return serveFile(req, res, path.join(ROOT, "launch.html"));
+  }
+
+  // Static apps are hosted by the hub at /apps/<id>/…  (Node apps run on their
+  // own ports, and their folders — profiles, saves — are never exposed here.)
+  if (pathname.startsWith("/apps/")) {
+    const rest  = pathname.slice("/apps/".length);
+    const slash = rest.indexOf("/");
+    const id    = decodeURIComponent(slash === -1 ? rest : rest.slice(0, slash));
+    const app   = APPS.find(a => a.id === id);
+    if (!app || app.type !== "static") { res.writeHead(404); return res.end("Not found"); }
+    if (slash === -1) { res.writeHead(302, { Location: "/apps/" + encodeURIComponent(id) + "/" }); return res.end(); }
+    const base = path.join(APPS_DIR, app.id);
+    const full = safeResolve(base, rest.slice(slash + 1));
+    if (!full) { res.writeHead(403); return res.end("Forbidden"); }
+    return serveFile(req, res, full);
   }
 
   // ---- library listing -----------------------------------------------------
@@ -155,6 +306,9 @@ const server = http.createServer((req, res) => {
   if (pathname === "/") return serveFile(req, res, path.join(ROOT, "index.html"));
   const full = safeResolve(ROOT, pathname.replace(/^\/+/, ""));
   if (!full) { res.writeHead(403); return res.end("Forbidden"); }
+  // The apps/ tree is only reachable through the /apps/ route above (which
+  // limits it to static apps) — never through this generic fallback.
+  if (full === APPS_DIR || full.startsWith(APPS_DIR + path.sep)) { res.writeHead(404); return res.end("Not found"); }
   return serveFile(req, res, full);
 });
 
@@ -181,8 +335,29 @@ server.listen(PORT, () => {
   console.log("   Drop your files into these folders next to server.js:");
   console.log("     " + Object.keys(SYSTEMS).join("/  ") + "/");
   console.log("");
+
+  // ---- start the full apps -------------------------------------------------
+  const nodeApps   = APPS.filter(a => a.type === "node");
+  const staticApps = APPS.filter(a => a.type === "static");
+  const missing    = APPS.filter(a => !appInstalled(a));
+
+  if (APPS.length) {
+    console.log("   Apps:");
+    for (const a of staticApps)
+      console.log("     " + (appInstalled(a) ? "· " + a.name.padEnd(14) + "hosted at /apps/" + a.id + "/" : "· " + a.name.padEnd(14) + "not installed"));
+    for (const a of nodeApps) {
+      if (appInstalled(a)) { console.log("     · " + a.name.padEnd(14) + "starting on port " + a.port + " …"); startApp(a); }
+      else console.log("     · " + a.name.padEnd(14) + "not installed");
+    }
+    if (missing.length) {
+      console.log("");
+      console.log("   " + missing.length + " app(s) missing — download them once with:   node get-apps.js");
+    }
+    console.log("");
+  }
+
   console.log("   Leave this window OPEN while anyone is using the hub.");
-  console.log("   Press Ctrl+C to stop.");
+  console.log("   Press Ctrl+C to stop everything.");
   console.log("");
 });
 

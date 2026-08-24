@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Launching…</title>
+<style>
+/* ============================================================
+   STEVEN X — APP LAUNCH SCREEN
+   One animated loading screen, themed per app (colors + FX from
+   apps.json via /api/apps). Served at /launch/<app-id>.
+   ============================================================ */
+:root{
+  --c1:#5cb872; --c2:#2f7a45;         /* overwritten per app */
+  --txt:#e9eefb; --mut:#8ea3c4;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--font);color:var(--txt);overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 62%, #0a1120 0%, #05080f 55%, #020409 100%);
+}
+#fx{position:fixed;inset:0;z-index:0}
+.tint{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:
+    radial-gradient(60% 50% at 18% 8%,  color-mix(in srgb, var(--c1) 16%, transparent), transparent 70%),
+    radial-gradient(60% 55% at 85% 90%, color-mix(in srgb, var(--c2) 20%, transparent), transparent 70%);
+}
+#stage{
+  position:relative;z-index:2;height:100%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;
+  text-align:center;padding:24px;
+  transition:opacity .7s ease, transform .7s ease;
+}
+#stage.out{opacity:0;transform:scale(1.06)}
+
+.eyebrow{
+  font-size:11px;letter-spacing:.5em;text-transform:uppercase;color:var(--mut);
+  opacity:0;animation:rise .8s ease .15s forwards;
+}
+/* ---- the big animated name ---- */
+#name{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:.08em;
+  font-weight:800;letter-spacing:.16em;margin-left:.16em;
+  font-size:clamp(34px, 9vw, 88px);line-height:1.1;
+}
+#name span{
+  opacity:0;transform:translateY(.55em) rotateX(70deg) scale(.7);
+  animation:letter .72s cubic-bezier(.18,.9,.28,1.2) forwards;
+  background:linear-gradient(180deg,#fff, var(--c1) 55%, var(--c2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 22px color-mix(in srgb, var(--c1) 45%, transparent));
+}
+#name span.space{min-width:.45em}
+@keyframes letter{
+  0%{opacity:0;transform:translateY(.55em) rotateX(70deg) scale(.7)}
+  60%{opacity:1;transform:translateY(-.06em) rotateX(0) scale(1.04)}
+  100%{opacity:1;transform:translateY(0) rotateX(0) scale(1)}
+}
+/* shimmer sweep across the name once the letters are in */
+#name.shine{position:relative}
+#name.shine::after{
+  content:"";position:absolute;inset:-8%;pointer-events:none;
+  background:linear-gradient(115deg,transparent 44%,rgba(255,255,255,.22) 50%,transparent 56%);
+  transform:translateX(-130%);animation:sweep 1.5s ease .2s;
+  mix-blend-mode:overlay;filter:blur(7px);
+}
+@keyframes sweep{to{transform:translateX(130%)}}
+
+.tagline{
+  font-size:clamp(12px,2.2vw,15px);letter-spacing:.34em;text-transform:uppercase;color:var(--mut);
+  opacity:0;animation:rise .9s ease 1.15s forwards;
+}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---- progress ---- */
+.bar{
+  width:min(400px,72vw);height:5px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;
+  opacity:0;animation:rise .8s ease 1.3s forwards;
+}
+.bar i{
+  display:block;height:100%;width:0%;border-radius:99px;
+  background:linear-gradient(90deg,var(--c2),var(--c1),#fff);
+  box-shadow:0 0 16px color-mix(in srgb, var(--c1) 80%, transparent);
+  transition:width .45s ease;
+}
+#status{
+  font-size:11.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--mut);min-height:17px;
+  opacity:0;animation:rise .8s ease 1.4s forwards;
+}
+#note{
+  max-width:460px;font-size:13px;line-height:1.55;color:var(--mut);display:none;
+}
+#note b{color:var(--txt)}
+.actions{display:none;gap:14px}
+.btn{
+  font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--txt);
+  background:linear-gradient(120deg,var(--c2),var(--c1));border:none;border-radius:99px;
+  padding:12px 26px;cursor:pointer;box-shadow:0 8px 26px color-mix(in srgb, var(--c1) 40%, transparent);
+  transition:transform .2s;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn.ghost{background:rgba(255,255,255,.08);box-shadow:none}
+#back{
+  position:fixed;top:22px;left:24px;z-index:3;display:flex;align-items:center;gap:8px;
+  font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--mut);
+  text-decoration:none;opacity:.75;transition:opacity .2s,color .2s;
+}
+#back:hover{opacity:1;color:var(--txt)}
+#back svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+
+<canvas id="fx"></canvas>
+<div class="tint"></div>
+
+<a id="back" href="/"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg> Hub</a>
+
+<div id="stage">
+  <div class="eyebrow" id="eyebrow">Steven X · Launching</div>
+  <div id="name"></div>
+  <div class="tagline" id="tagline"></div>
+  <div class="bar"><i id="fill"></i></div>
+  <div id="status">Contacting the hub…</div>
+  <p id="note"></p>
+  <div class="actions" id="actions">
+    <button class="btn" id="goBtn">Open anyway</button>
+    <button class="btn ghost" onclick="location.href='/'">Back to hub</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const appId = decodeURIComponent((location.pathname.split("/")[2] || ""));
+const MIN_SHOW = 3000;            // never flash — the animation gets its moment
+const TIMEOUT  = 30000;           // give a cold app server 30s to wake
+const t0 = performance.now();
+
+let app = null, target = "#", leaving = false;
+
+/* ============================================================
+   CANVAS FX — one tiny engine, seven personalities
+   ============================================================ */
+const cv = $("#fx"), cx = cv.getContext("2d");
+let W, H;
+function size(){ W = cv.width = innerWidth; H = cv.height = innerHeight; }
+size(); addEventListener("resize", size);
+
+function hexRgb(h){ const n = parseInt(h.slice(1), 16); return [(n>>16)&255, (n>>8)&255, n&255]; }
+let C1 = [92,184,114], C2 = [47,122,69];
+const rgba = (c,a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const rnd = (a,b) => a + Math.random()*(b-a);
+
+const FX = {
+  /* REEL — drifting projector dust + film sprocket strips rolling past */
+  film(t){
+    cx.fillStyle = rgba(C1,.05);
+    for(const d of pool(70, () => ({x:rnd(0,W), y:rnd(0,H), r:rnd(.4,1.8), s:rnd(.1,.5)}))){
+      d.y += d.s; d.x += Math.sin(t/900 + d.r*9)*.2; if(d.y > H) d.y = 0;
+      cx.globalAlpha = .25 + Math.sin(t/300 + d.x)* .15;
+      cx.beginPath(); cx.arc(d.x, d.y, d.r, 0, 7); cx.fill();
+    }
+    cx.globalAlpha = 1;
+    // two sprocket strips
+    for(const yBand of [H*.08, H*.9]){
+      cx.fillStyle = rgba(C2,.28);
+      cx.fillRect(0, yBand, W, 26);
+      cx.fillStyle = "rgba(2,4,9,.9)";
+      const off = (t/6) % 46;
+      for(let x = -off; x < W; x += 46) cx.fillRect(x, yBand+7, 20, 12);
+    }
+    // occasional vertical scratch
+    if(Math.random() < .06){ cx.fillStyle = rgba(C1,.10); cx.fillRect(rnd(0,W), 0, 1, H); }
+  },
+  /* ARCADE — synthwave grid rushing toward a horizon */
+  grid(t){
+    const hz = H*.62;
+    cx.strokeStyle = rgba(C1,.5); cx.lineWidth = 1;
+    for(let i = 0; i < 14; i++){                       // rows accelerating downward
+      const p = ((t/1400 + i/14) % 1);
+      const y = hz + (H - hz) * p*p;
+      cx.globalAlpha = .12 + p*.5;
+      cx.beginPath(); cx.moveTo(0,y); cx.lineTo(W,y); cx.stroke();
+    }
+    cx.globalAlpha = .35; cx.strokeStyle = rgba(C2,.8);
+    for(let i = -12; i <= 12; i++){                    // converging columns
+      cx.beginPath(); cx.moveTo(W/2 + i*26, hz); cx.lineTo(W/2 + i*W*.09, H); cx.stroke();
+    }
+    cx.globalAlpha = 1;
+    const g = cx.createLinearGradient(0,hz-90,0,hz);   // horizon glow
+    g.addColorStop(0,"transparent"); g.addColorStop(1, rgba(C1,.24));
+    cx.fillStyle = g; cx.fillRect(0,hz-90,W,90);
+  },
+  /* BERĔSHITH — embers rising through the dawn */
+  embers(t){
+    for(const e of pool(90, () => ({x:rnd(0,W), y:rnd(0,H), r:rnd(.6,2.6), s:rnd(.25,1.1), w:rnd(0,7)}))){
+      e.y -= e.s; e.x += Math.sin(t/700 + e.w)*.45; if(e.y < -4){ e.y = H+4; e.x = rnd(0,W); }
+      const warm = e.w > 3.5 ? C1 : C2;
+      cx.globalAlpha = .25 + Math.sin(t/240 + e.w)*.2;
+      cx.fillStyle = rgba(warm, .8);
+      cx.beginPath(); cx.arc(e.x, e.y, e.r, 0, 7); cx.fill();
+    }
+    cx.globalAlpha = 1;
+  },
+  /* THE VOYAGE — layered seas rolling under the stars */
+  waves(t){
+    for(const s of pool(60, () => ({x:rnd(0,W), y:rnd(0,H*.5), r:rnd(.3,1.4), w:rnd(0,7)}))){
+      cx.globalAlpha = .3 + Math.sin(t/400 + s.w)*.25;
+      cx.fillStyle = "#cfe1ff";
+      cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill();
+    }
+    cx.globalAlpha = 1;
+    for(let L = 0; L < 4; L++){
+      const yBase = H*(.62 + L*.1), amp = 14 + L*8, sp = 1 + L*.5;
+      cx.beginPath(); cx.moveTo(0,H);
+      for(let x = 0; x <= W; x += 8) cx.lineTo(x, yBase + Math.sin(x/120 + t/(900/sp))*amp);
+      cx.lineTo(W,H); cx.closePath();
+      cx.fillStyle = rgba(L % 2 ? C2 : C1, .10 + L*.05); cx.fill();
+    }
+  },
+  /* THE BESORAH — golden letters drifting down like gentle rain */
+  glyphs(t){
+    const chars = "אבגדהוזחטיכלמנסעפצקרשת";
+    cx.font = "18px serif"; cx.textAlign = "center";
+    for(const g of pool(46, () => ({x:rnd(0,W), y:rnd(-H,0), s:rnd(.4,1.4), ch:chars[Math.floor(rnd(0,chars.length))], w:rnd(0,7)}))){
+      g.y += g.s; if(g.y > H+20){ g.y = -20; g.x = rnd(0,W); g.ch = chars[Math.floor(rnd(0,chars.length))]; }
+      cx.globalAlpha = .18 + Math.sin(t/500 + g.w)*.14;
+      cx.fillStyle = rgba(C1,.9);
+      cx.fillText(g.ch, g.x, g.y);
+    }
+    cx.globalAlpha = 1;
+  },
+  /* CLOUDPLAYER — an equalizer breathing along the bottom */
+  bars(t){
+    const n = Math.floor(W/26);
+    for(let i = 0; i < n; i++){
+      const h = (Math.sin(t/300 + i*.55)*.5 + .5) * (H*.16) + 8
+              + (Math.sin(t/140 + i*1.7)*.5 + .5) * 22;
+      const g = cx.createLinearGradient(0, H, 0, H-h);
+      g.addColorStop(0, rgba(C2,.7)); g.addColorStop(1, rgba(C1,.9));
+      cx.fillStyle = g;
+      cx.fillRect(i*26 + 5, H-h, 16, h);
+    }
+    for(const s of pool(30, () => ({x:rnd(0,W), y:rnd(0,H*.6), r:rnd(.4,1.4), w:rnd(0,7)}))){
+      cx.globalAlpha = .2 + Math.sin(t/350 + s.w)*.18;
+      cx.fillStyle = rgba(C1,.8);
+      cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill();
+    }
+    cx.globalAlpha = 1;
+  },
+  /* PACKR — blocks spiralling inward, assembling around the name */
+  blocks(t){
+    const cxr = W/2, cyr = H/2;
+    for(const b of pool(40, () => ({a:rnd(0,Math.PI*2), d0:rnd(Math.max(W,H)*.55, Math.max(W,H)*.75),
+                                    dt:rnd(0,1), sp:rnd(.002,.005), w:rnd(0,7)}))){
+      b.dt += b.sp; if(b.dt > 1) b.dt = 0;
+      const ease = 1 - Math.pow(1 - b.dt, 3);
+      const dist = b.d0*(1-ease) + 150*ease;           // fly in from the edge, settle in a ring
+      const x = cxr + Math.cos(b.a + ease*2.2) * dist;
+      const y = cyr + Math.sin(b.a + ease*2.2) * dist * .62;
+      const s = 18 * (0.4 + ease*.6);
+      cx.globalAlpha = .16 + ease*.4;
+      cx.fillStyle = rgba(b.w > 3.5 ? C1 : C2, .9);
+      cx.fillRect(x - s/2, y - s/2, s, s);
+      cx.strokeStyle = rgba(C1,.35); cx.strokeRect(x - s/2, y - s/2, s, s);
+    }
+    cx.globalAlpha = 1;
+  },
+};
+
+// lazily-built particle pools so each FX keeps its own state
+const pools = {};
+let poolKey = "";
+function pool(n, make){
+  if(!pools[poolKey]){ pools[poolKey] = Array.from({length:n}, (_,i) => make(i)); }
+  return pools[poolKey];
+}
+
+let fxMode = "embers";
+(function loop(now){
+  cx.clearRect(0,0,W,H);
+  poolKey = fxMode;
+  (FX[fxMode] || FX.embers)(now || 0);
+  requestAnimationFrame(loop);
+})(0);
+
+/* ============================================================
+   LAUNCH FLOW — fetch app meta, animate, wait until ready, go
+   ============================================================ */
+const fill = $("#fill"), statusEl = $("#status");
+let bootLines = ["Warming up…"], lineI = 0, ready = false, failed = false;
+
+function setName(name){
+  $("#name").innerHTML = [...name].map((ch,i) =>
+    ch === " " ? `<span class="space"></span>`
+               : `<span style="animation-delay:${.35 + i*.09}s">${ch}</span>`).join("");
+  const total = .35 + name.length*.09 + .7;
+  setTimeout(() => $("#name").classList.add("shine"), total*1000);
+}
+
+function fauxProgress(){
+  // creep toward 90% while waiting; the last 10% belongs to a real "ready"
+  const el = (performance.now() - t0) / (fxNodeApp() ? 9000 : MIN_SHOW);
+  return Math.min(90, el * 90);
+}
+const fxNodeApp = () => app && app.type === "node";
+
+setInterval(() => {
+  if(leaving || failed) return;
+  statusEl.textContent = bootLines[lineI % bootLines.length];
+  lineI++;
+}, 1400);
+
+setInterval(() => {
+  if(leaving || failed) return;
+  fill.style.width = (ready ? 100 : fauxProgress()) + "%";
+}, 300);
+
+function leave(){
+  if(leaving) return; leaving = true;
+  fill.style.width = "100%";
+  statusEl.textContent = bootLines[bootLines.length - 1] || "Ready.";
+  setTimeout(() => {
+    $("#stage").classList.add("out");
+    setTimeout(() => location.href = target, 650);
+  }, 500);
+}
+
+function fail(msg){
+  failed = true;
+  statusEl.textContent = "";
+  const n = $("#note");
+  n.style.display = "block";
+  n.innerHTML = msg;
+  const a = $("#actions"); a.style.display = "flex";
+  $("#goBtn").onclick = () => { location.href = target; };
+}
+
+async function poll(){
+  if(leaving || failed) return;
+  try{
+    const r = await fetch("/api/app-status?id=" + encodeURIComponent(appId), {cache:"no-store"});
+    const j = await r.json();
+    ready = !!j.ready;
+  }catch(e){ ready = false; }
+  const elapsed = performance.now() - t0;
+  if(ready && elapsed >= MIN_SHOW) return leave();
+  if(!ready && elapsed > TIMEOUT){
+    return fail(`<b>${app ? app.name : appId}</b> isn't answering yet. The app may still be starting on the server, or it isn't installed — run <b>node get-apps.js</b> on the server, then try again.`);
+  }
+  setTimeout(poll, ready ? 250 : 800);
+}
+
+(async function init(){
+  let meta = null;
+  try{
+    const r = await fetch("/api/apps", {cache:"no-store"});
+    meta = await r.json();
+  }catch(e){}
+  app = meta && meta.apps ? meta.apps.find(a => a.id === appId) : null;
+
+  if(!app){
+    setName("STEVEN X");
+    return fail(`Unknown app "<b>${appId || "?"}</b>". Head back to the hub and pick a system from the grid.`);
+  }
+
+  document.title = "Launching " + app.name + "…";
+  document.documentElement.style.setProperty("--c1", app.color1);
+  document.documentElement.style.setProperty("--c2", app.color2);
+  C1 = hexRgb(app.color1); C2 = hexRgb(app.color2);
+  fxMode = app.fx || "embers";
+  $("#tagline").textContent = app.tagline || "";
+  $("#eyebrow").textContent = "Steven X · " + (app.title || "Launching");
+  if(app.bootLines && app.bootLines.length) bootLines = app.bootLines;
+  setName(app.name);
+
+  target = app.type === "static"
+    ? app.url
+    : location.protocol + "//" + location.hostname + ":" + app.port + "/";
+
+  if(!app.installed){
+    return fail(`<b>${app.name}</b> isn't installed on the server yet. On the server computer, run <b>node get-apps.js</b> once (internet needed), restart the hub, and this tile comes alive.`);
+  }
+
+  if(app.localOnly && meta && meta.youAreLocal === false){
+    return fail(`<b>${app.name}</b> is the app <b>workshop</b> — it only works on the server computer itself (finished APKs still reach any phone by QR code). Open the hub on that machine to build apps.`);
+  }
+
+  poll();
+})();
+</script>
+</body>
+</html>

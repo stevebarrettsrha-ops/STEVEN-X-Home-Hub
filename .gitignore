@@ -9,6 +9,9 @@
 !*/.gitkeep
 !*/README.txt
 
+# Downloaded full apps (REEL, ARCADE, …) — fetched by get-apps.js, never committed
+/apps/
+
 # Node / OS cruft
 node_modules/
 .DS_Store
