@@ -191,6 +191,23 @@ input{font-family:inherit}
   transform:translateX(-120%);transition:transform .7s ease}
 .sys-card:hover .shine{transform:translateX(120%)}
 
+/* ---------- full-app cards (REEL, ARCADE, …) ---------- */
+.app-card .chip{
+  position:absolute;top:12px;left:14px;font-size:9px;font-weight:800;letter-spacing:.26em;
+  text-transform:uppercase;color:rgba(255,255,255,.85);background:rgba(0,0,0,.35);
+  border:1px solid rgba(255,255,255,.22);border-radius:99px;padding:4px 10px;backdrop-filter:blur(4px);
+}
+.app-card .dot{
+  position:absolute;top:14px;right:14px;width:9px;height:9px;border-radius:50%;
+  background:#6b7a99;box-shadow:0 0 0 3px rgba(0,0,0,.25);
+}
+.app-card .dot.ok{background:#43e97b;box-shadow:0 0 10px rgba(67,233,123,.9),0 0 0 3px rgba(0,0,0,.25);animation:dotpulse 2.2s ease infinite}
+.app-card .dot.warm{background:#ffc857;box-shadow:0 0 10px rgba(255,200,87,.8),0 0 0 3px rgba(0,0,0,.25);animation:dotpulse 1.1s ease infinite}
+.app-card .dot.off{background:#ff5f6d;box-shadow:0 0 8px rgba(255,95,109,.7),0 0 0 3px rgba(0,0,0,.25)}
+@keyframes dotpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}
+.app-card.disabled{filter:saturate(.35) brightness(.7)}
+.app-card small{opacity:.9}
+
 /* ---------- library tiles ---------- */
 .tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:15px}
 .tile{
@@ -402,6 +419,9 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
       <span>Games</span>
     </button>
 
+    <div id="appsNavLabel" class="nav-label" style="display:none">Full Apps</div>
+    <div id="appsNav"></div>
+
     <div class="nav-label">System</div>
     <button class="nav-item" data-page="settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2Z"/></svg>
@@ -435,7 +455,9 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
           <button class="hero-nav next" id="heroNext"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
           <div class="hero-dots" id="heroDots"></div>
         </div>
-        <div class="section-head"><h2>All Systems</h2><div class="rule"></div><span class="count">6 installed</span></div>
+        <div class="section-head" id="appsHead" style="display:none"><h2>Full Apps</h2><div class="rule"></div><span class="count" id="appsCount"></span></div>
+        <div class="sys-grid" id="appsGrid" style="display:none"></div>
+        <div class="section-head"><h2>Folder Libraries</h2><div class="rule"></div><span class="count">6 installed</span></div>
         <div class="sys-grid" id="sysGrid"></div>
       </section>
 
@@ -472,6 +494,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
             <p>Host STEVEN X for the whole house — every phone, tablet or TV on your Wi-Fi opens it from a browser, no internet needed. Drop your media into the folders above, then start the server:</p>
             <ol style="margin-top:10px">
               <li>Install <b style="color:var(--txt)">Node.js</b> once (from <code>nodejs.org</code>).</li>
+              <li>Run <code>node get-apps.js</code> once to download the full apps (REEL, ARCADE, the scripture apps…) into <code>apps/</code>.</li>
               <li>Double-click <code>start-windows.bat</code>, <code>start-mac.command</code>, or run <code>bash START.sh</code> on Linux.</li>
               <li>On any device, open the <b style="color:var(--txt)">http://…:8080</b> address it prints.</li>
             </ol>
@@ -559,7 +582,9 @@ const ICONS = {
   joy:     '<path d="M6.5 7h11a4.5 4.5 0 0 1 4.4 5.5l-1 4.2a2.6 2.6 0 0 1-4.6 1L14.6 15H9.4l-1.7 2.7a2.6 2.6 0 0 1-4.6-1l-1-4.2A4.5 4.5 0 0 1 6.5 7Z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="16" cy="11" r=".8"/><circle cx="18" cy="13" r=".8"/>',
   doc:     '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/>',
   play:    '<path d="M8 5v14l11-7L8 5Z"/>',
-  folder:  '<path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/>'
+  folder:  '<path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>',
+  package: '<path d="M12 2 3.5 6.5v11L12 22l8.5-4.5v-11L12 2Z"/><path d="M3.5 6.5 12 11l8.5-4.5M12 11v11"/>'
 };
 
 const SYSTEMS = [
@@ -789,9 +814,79 @@ async function autoLoadServer(){
   const badge = $("#serverBadge"), foot = $("#sideFoot");
   if(badge) badge.textContent = "· running";
   if(foot) foot.textContent = "STEVEN X · v1.0 · hosted";
+  loadApps();
   let total = 0;
   for(const s of SYSTEMS) total += await loadFromServer(s);
   if(total) toast(`Home server connected — ${total} item${total>1?"s":""} loaded across your libraries`);
+}
+
+/* ============================================================
+   FULL APPS — REEL, ARCADE and friends. The home server hosts
+   or launches each one (see apps.json + get-apps.js); the hub
+   shows a live tile per app and sends clicks through the
+   animated /launch/<id> loading screen.
+   ============================================================ */
+let APPS = [];
+
+async function loadApps(){
+  try{
+    const r = await fetch("api/apps", {cache:"no-store"});
+    if(!r.ok) return;
+    APPS = (await r.json()).apps || [];
+  }catch(e){ return; }
+  if(!APPS.length) return;
+  renderApps();
+  refreshAppStatus();
+  setInterval(refreshAppStatus, 15000);
+}
+
+function openApp(id){
+  const a = APPS.find(x=>x.id===id);
+  if(a && !a.installed){
+    toast(`${a.name} isn't downloaded yet — run "node get-apps.js" on the server, then restart the hub`);
+    return;
+  }
+  location.href = "launch/" + encodeURIComponent(id);
+}
+
+function renderApps(){
+  $("#appsHead").style.display = "";
+  const grid = $("#appsGrid");
+  grid.style.display = "";
+  $("#appsCount").textContent = APPS.filter(a=>a.installed).length + " / " + APPS.length + " installed";
+  grid.innerHTML = APPS.map(a=>`
+    <div class="sys-card app-card ${a.installed?"":"disabled"}" data-search="${(a.name+" "+a.title).toLowerCase()}"
+         style="background:linear-gradient(120deg,${a.color2},${a.color1})" onclick="openApp('${a.id}')">
+      <svg class="glyph" viewBox="0 0 24 24">${ICONS[a.icon]||ICONS.play}</svg>
+      <span class="chip">${a.type==="node" ? "App · port "+a.port : "Full App"}</span>
+      <span class="dot" id="dot-${a.id}" title="status"></span>
+      <div><b>${a.name}</b><small>${a.tagline||a.title}</small></div>
+      <div class="shine"></div>
+    </div>`).join("");
+
+  // sidebar shortcuts
+  $("#appsNavLabel").style.display = "";
+  $("#appsNav").innerHTML = APPS.map(a=>`
+    <button class="nav-item" onclick="openApp('${a.id}')">
+      ${svgIcon(a.icon)}
+      <span>${a.name}</span>
+    </button>`).join("");
+}
+
+async function refreshAppStatus(){
+  for(const a of APPS){
+    const dot = $("#dot-"+a.id);
+    if(!dot) continue;
+    if(!a.installed){ dot.className = "dot off"; dot.title = "Not installed — run get-apps.js"; continue; }
+    if(a.type === "static"){ dot.className = "dot ok"; dot.title = "Hosted by the hub"; continue; }
+    try{
+      const r = await fetch("api/app-status?id="+encodeURIComponent(a.id), {cache:"no-store"});
+      const j = await r.json();
+      if(j.ready){ dot.className = "dot ok"; dot.title = "Running on port "+a.port; }
+      else if(j.state === "failed"){ dot.className = "dot off"; dot.title = "Crashed — check the server window"; }
+      else { dot.className = "dot warm"; dot.title = "Starting…"; }
+    }catch(e){ dot.className = "dot warm"; dot.title = "Checking…"; }
+  }
 }
 // Resolve a playable/openable URL for a library item.
 // Server items carry a ready .url; local items become a temporary object URL.
