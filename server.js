@@ -26,11 +26,22 @@ const ROOT = __dirname;                       // folder this file lives in
 const APPS_DIR = path.join(ROOT, "apps");     // full apps live here (see get-apps.js)
 
 // ---- full apps (REEL, ARCADE, …) — registry comes from apps.json -----------
-let APPS = [];
+let APPS = [], CATEGORIES = [];
 try {
-  APPS = (JSON.parse(fs.readFileSync(path.join(ROOT, "apps.json"), "utf8")).apps || [])
-    .filter(a => a.enabled !== false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "apps.json"), "utf8"));
+  APPS       = (manifest.apps || []).filter(a => a.enabled !== false);
+  CATEGORIES = manifest.categories || [];
 } catch (e) { console.error("  (apps.json missing or invalid — full apps disabled: " + e.message + ")"); }
+
+// Apps grouped by the categories declared in apps.json (in declared order);
+// anything with an unknown category lands in a trailing "Other" group.
+function appGroups() {
+  const known  = new Set(CATEGORIES.map(c => c.id));
+  const groups = CATEGORIES.map(c => ({ id: c.id, name: c.name, apps: APPS.filter(a => a.category === c.id) }));
+  const rest   = APPS.filter(a => !known.has(a.category));
+  if (rest.length) groups.push({ id: "other", name: "Other", apps: rest });
+  return groups.filter(g => g.apps.length);
+}
 
 const appDir       = a => path.join(APPS_DIR, a.id, a.subdir || "");
 const appEntry     = a => a.type === "node" ? path.join(appDir(a), a.serverFile || "server.js")
@@ -230,6 +241,7 @@ const server = http.createServer((req, res) => {
   if (pathname === "/api/apps") {
     const list = APPS.map(a => ({
       id: a.id, name: a.name, title: a.title, tagline: a.tagline, desc: a.desc,
+      category: a.category || null,
       type: a.type, port: a.port || null, icon: a.icon, fx: a.fx,
       color1: a.color1, color2: a.color2, bootLines: a.bootLines || [],
       localOnly: !!a.localOnly,
@@ -238,7 +250,7 @@ const server = http.createServer((req, res) => {
       url: a.type === "static" ? "/apps/" + a.id + "/" : null,   // node apps: client builds host:port
     }));
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ apps: list, youAreLocal: requestIsLocal(req) }));
+    return res.end(JSON.stringify({ categories: CATEGORIES, apps: list, youAreLocal: requestIsLocal(req) }));
   }
 
   // Live readiness probe for one app — the launch screen polls this.
@@ -336,18 +348,18 @@ server.listen(PORT, () => {
   console.log("     " + Object.keys(SYSTEMS).join("/  ") + "/");
   console.log("");
 
-  // ---- start the full apps -------------------------------------------------
-  const nodeApps   = APPS.filter(a => a.type === "node");
-  const staticApps = APPS.filter(a => a.type === "static");
-  const missing    = APPS.filter(a => !appInstalled(a));
+  // ---- start the full apps (listed by category) ----------------------------
+  const missing = APPS.filter(a => !appInstalled(a));
 
   if (APPS.length) {
-    console.log("   Apps:");
-    for (const a of staticApps)
-      console.log("     " + (appInstalled(a) ? "· " + a.name.padEnd(14) + "hosted at /apps/" + a.id + "/" : "· " + a.name.padEnd(14) + "not installed"));
-    for (const a of nodeApps) {
-      if (appInstalled(a)) { console.log("     · " + a.name.padEnd(14) + "starting on port " + a.port + " …"); startApp(a); }
-      else console.log("     · " + a.name.padEnd(14) + "not installed");
+    console.log("   Apps (" + APPS.length + "):");
+    for (const g of appGroups()) {
+      console.log("     " + g.name);
+      for (const a of g.apps) {
+        if (!appInstalled(a)) { console.log("       · " + a.name.padEnd(15) + "not installed"); continue; }
+        if (a.type === "node") { console.log("       · " + a.name.padEnd(15) + "starting on port " + a.port + " …"); startApp(a); }
+        else console.log("       · " + a.name.padEnd(15) + "hosted at /apps/" + a.id + "/");
+      }
     }
     if (missing.length) {
       console.log("");

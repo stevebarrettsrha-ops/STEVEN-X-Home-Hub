@@ -207,6 +207,13 @@ input{font-family:inherit}
 @keyframes dotpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}
 .app-card.disabled{filter:saturate(.35) brightness(.7)}
 .app-card small{opacity:.9}
+/* categories inside the Full Apps section (from apps.json "categories") */
+.app-cats{display:flex;flex-direction:column;gap:26px}
+.cat-head{display:flex;align-items:baseline;gap:12px;margin:0 0 12px}
+.cat-head h3{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--txt);font-weight:800;white-space:nowrap}
+.cat-head span{flex:1;font-size:11px;color:#526897;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-head em{font-style:normal;font-size:10px;color:#526897;letter-spacing:.1em;white-space:nowrap}
+.nav-sub{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:#3f5279;padding:8px 12px 3px}
 
 /* ---------- library tiles ---------- */
 .tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:15px}
@@ -345,7 +352,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
 /* ---------- responsive ---------- */
 @media (max-width:860px){
   :root{--sidebar:66px}
-  .nav-item span,.brand .brand-txt,.nav-label,.side-foot{display:none}
+  .nav-item span,.brand .brand-txt,.nav-label,.nav-sub,.side-foot{display:none}
   .nav-item{justify-content:center}
   .slide h1{font-size:30px}
   .slide{padding:0 34px}
@@ -456,7 +463,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
           <div class="hero-dots" id="heroDots"></div>
         </div>
         <div class="section-head" id="appsHead" style="display:none"><h2>Full Apps</h2><div class="rule"></div><span class="count" id="appsCount"></span></div>
-        <div class="sys-grid" id="appsGrid" style="display:none"></div>
+        <div class="app-cats" id="appsGrid" style="display:none"></div>
         <div class="section-head"><h2>Folder Libraries</h2><div class="rule"></div><span class="count">6 installed</span></div>
         <div class="sys-grid" id="sysGrid"></div>
       </section>
@@ -494,7 +501,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
             <p>Host STEVEN X for the whole house — every phone, tablet or TV on your Wi-Fi opens it from a browser, no internet needed. Drop your media into the folders above, then start the server:</p>
             <ol style="margin-top:10px">
               <li>Install <b style="color:var(--txt)">Node.js</b> once (from <code>nodejs.org</code>).</li>
-              <li>Run <code>node get-apps.js</code> once to download the full apps (REEL, ARCADE, the scripture apps…) into <code>apps/</code>.</li>
+              <li>Run <code>node get-apps.js</code> once to download the full apps (REEL, ARCADE, the scripture apps, the games and the studio tools…) into <code>apps/</code>.</li>
               <li>Double-click <code>start-windows.bat</code>, <code>start-mac.command</code>, or run <code>bash START.sh</code> on Linux.</li>
               <li>On any device, open the <b style="color:var(--txt)">http://…:8080</b> address it prints.</li>
             </ol>
@@ -584,7 +591,12 @@ const ICONS = {
   play:    '<path d="M8 5v14l11-7L8 5Z"/>',
   folder:  '<path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>',
-  package: '<path d="M12 2 3.5 6.5v11L12 22l8.5-4.5v-11L12 2Z"/><path d="M3.5 6.5 12 11l8.5-4.5M12 11v11"/>'
+  package: '<path d="M12 2 3.5 6.5v11L12 22l8.5-4.5v-11L12 2Z"/><path d="M3.5 6.5 12 11l8.5-4.5M12 11v11"/>',
+  mic:     '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
+  speaker: '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+  blob:    '<path d="M5 17c-1-4 1-9 5-10 3-1 6 0 8 2 3 3 3 8-1 9-4 1-11 2-12-1Z"/><circle cx="10" cy="12" r="1"/><circle cx="15" cy="12" r="1"/>',
+  snake:   '<path d="M6 4h9a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7a3 3 0 0 1 3 3"/><circle cx="6" cy="4" r="1.3"/><path d="M4.5 4H2"/>',
+  rocket:  '<path d="M12 2.5c3.2 2.3 5 6.4 5 10.5l-2.5 3.5h-5L7 13c0-4.1 1.8-8.2 5-10.5Z"/><circle cx="12" cy="10" r="1.7"/><path d="M9.5 16.5 7 20M14.5 16.5 17 20M12 16.5V21"/>'
 };
 
 const SYSTEMS = [
@@ -826,13 +838,15 @@ async function autoLoadServer(){
    shows a live tile per app and sends clicks through the
    animated /launch/<id> loading screen.
    ============================================================ */
-let APPS = [];
+let APPS = [], APP_CATS = [];
 
 async function loadApps(){
   try{
     const r = await fetch("api/apps", {cache:"no-store"});
     if(!r.ok) return;
-    APPS = (await r.json()).apps || [];
+    const j = await r.json();
+    APPS = j.apps || [];
+    APP_CATS = j.categories || [];
   }catch(e){ return; }
   if(!APPS.length) return;
   renderApps();
@@ -849,28 +863,51 @@ function openApp(id){
   location.href = "launch/" + encodeURIComponent(id);
 }
 
-function renderApps(){
-  $("#appsHead").style.display = "";
-  const grid = $("#appsGrid");
-  grid.style.display = "";
-  $("#appsCount").textContent = APPS.filter(a=>a.installed).length + " / " + APPS.length + " installed";
-  grid.innerHTML = APPS.map(a=>`
-    <div class="sys-card app-card ${a.installed?"":"disabled"}" data-search="${(a.name+" "+a.title).toLowerCase()}"
+// Apps grouped by the categories apps.json declares (in that order); anything
+// with a category the registry doesn't know lands in a trailing "More Apps".
+function appGroups(){
+  const known = new Set(APP_CATS.map(c=>c.id));
+  const groups = APP_CATS.map(c=>({ id:c.id, name:c.name, tagline:c.tagline||"", apps:APPS.filter(a=>a.category===c.id) }));
+  const rest = APPS.filter(a=>!known.has(a.category));
+  if(rest.length) groups.push({ id:"other", name:"More Apps", tagline:"", apps:rest });
+  return groups.filter(g=>g.apps.length);
+}
+
+function appCard(a, cat){
+  return `
+    <div class="sys-card app-card ${a.installed?"":"disabled"}" data-search="${(a.name+" "+a.title+" "+cat).toLowerCase()}"
          style="background:linear-gradient(120deg,${a.color2},${a.color1})" onclick="openApp('${a.id}')">
       <svg class="glyph" viewBox="0 0 24 24">${ICONS[a.icon]||ICONS.play}</svg>
       <span class="chip">${a.type==="node" ? "App · port "+a.port : "Full App"}</span>
       <span class="dot" id="dot-${a.id}" title="status"></span>
       <div><b>${a.name}</b><small>${a.tagline||a.title}</small></div>
       <div class="shine"></div>
+    </div>`;
+}
+
+function renderApps(){
+  $("#appsHead").style.display = "";
+  const wrap = $("#appsGrid");
+  wrap.style.display = "";
+  $("#appsCount").textContent = APPS.filter(a=>a.installed).length + " / " + APPS.length + " installed";
+  const groups = appGroups();
+  // Each category block carries every app name it holds, so a search for one
+  // app keeps its category heading on screen while the other tiles hide.
+  wrap.innerHTML = groups.map(g=>`
+    <div class="app-cat" id="apps-cat-${g.id}" data-search="${(g.name+" "+g.apps.map(a=>a.name+" "+a.title).join(" ")).toLowerCase()}">
+      <div class="cat-head"><h3>${g.name}</h3><span>${g.tagline}</span><em>${g.apps.length} app${g.apps.length===1?"":"s"}</em></div>
+      <div class="sys-grid">${g.apps.map(a=>appCard(a, g.name)).join("")}</div>
     </div>`).join("");
 
-  // sidebar shortcuts
+  // sidebar shortcuts, under a small label per category
   $("#appsNavLabel").style.display = "";
-  $("#appsNav").innerHTML = APPS.map(a=>`
+  $("#appsNav").innerHTML = groups.map(g=>`
+    <div class="nav-sub">${g.name}</div>
+    ${g.apps.map(a=>`
     <button class="nav-item" onclick="openApp('${a.id}')">
       ${svgIcon(a.icon)}
       <span>${a.name}</span>
-    </button>`).join("");
+    </button>`).join("")}`).join("");
 }
 
 async function refreshAppStatus(){
