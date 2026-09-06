@@ -5,10 +5,11 @@
   "//4": "Every app names a \"category\" below — the hub groups its tiles by these.",
 
   "categories": [
-    { "id": "media",     "name": "Cinema & Music", "tagline": "Films, series and your music collection" },
-    { "id": "scripture", "name": "Scripture",      "tagline": "Games and reading rooms of the Word" },
-    { "id": "games",     "name": "Games & Arcade", "tagline": "Console emulation and browser games" },
-    { "id": "tools",     "name": "Tools & Studio", "tagline": "Transcription, voices, documents and app building" }
+    { "id": "media",           "name": "Cinema & Music",  "tagline": "Films, series and your music collection" },
+    { "id": "scripture",       "name": "Scripture",       "tagline": "The reading room of the Word" },
+    { "id": "scripture-games", "name": "Scripture Games", "tagline": "Walk and sail the scripture story" },
+    { "id": "games",           "name": "Games & Arcade",  "tagline": "Console emulation and browser games" },
+    { "id": "tools",           "name": "Tools & Studio",  "tagline": "Transcription, voices, documents and app building" }
   ],
 
   "apps": [
@@ -53,7 +54,7 @@
       "tagline": "In the beginning",
       "repo": "stevebarrettsrha-ops/Scripture-Game",
       "type": "static",
-      "category": "scripture",
+      "category": "scripture-games",
       "enabled": true,
       "color1": "#c97f16",
       "color2": "#8a4d0b",
@@ -69,7 +70,7 @@
       "tagline": "All the earth within the firmament",
       "repo": "stevebarrettsrha-ops/Scripture-Game-2",
       "type": "static",
-      "category": "scripture",
+      "category": "scripture-games",
       "enabled": true,
       "color1": "#149b80",
       "color2": "#0c5c4d",

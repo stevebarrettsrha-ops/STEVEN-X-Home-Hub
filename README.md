@@ -7,7 +7,7 @@ it's set up.
 
 ## What it hosts
 
-**Thirteen full apps** in four categories, downloaded straight from their own
+**Thirteen full apps** in five categories, downloaded straight from their own
 repositories. The hub groups its tiles and sidebar by these categories (they
 are declared at the top of `apps.json`).
 
@@ -22,9 +22,14 @@ are declared at the top of `apps.json`).
 
 | App | What it is | How the hub runs it |
 |---|---|---|
+| **THE BESORAH** | Scripture of All Truths — Bereshiyth to Revelation + apocrypha | Hosted by the hub at `/apps/besorah/` |
+
+### Scripture Games
+
+| App | What it is | How the hub runs it |
+|---|---|---|
 | **BERĔSHITH** | Scripture Game — the Genesis adventure | Hosted by the hub at `/apps/scripture-game/` |
 | **THE VOYAGE** | Scripture Game 2 — all the earth within the firmament, in 3D | Hosted by the hub at `/apps/voyage/` |
-| **THE BESORAH** | Scripture of All Truths — Bereshiyth to Revelation + apocrypha | Hosted by the hub at `/apps/besorah/` |
 
 ### Games & Arcade
 
