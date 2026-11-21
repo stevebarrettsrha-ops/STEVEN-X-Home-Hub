@@ -136,9 +136,13 @@ For when guests are on your Wi‑Fi. Create a file called **`pin.txt`** next to
 - Five wrong tries and that device has to wait (30 seconds, doubling each time).
 - Change the PIN and every device is asked again. Delete `pin.txt` and restart
   to switch the lock off.
-- **Limit:** REEL, ARCADE and PACKR run on their own ports, so the PIN does not
-  cover them — it protects the hub page, the six folder libraries and the apps
-  hosted at `/apps/…`.
+- **It covers everything** — the hub page, the six folder libraries, the apps
+  at `/apps/…`, and REEL, ARCADE and PACKR on their own ports. While the PIN is
+  on, those three listen on the server computer only and the hub answers on
+  their ports (8081, 8082, 4477), checks the PIN and passes requests through.
+  Unlocking once on a device unlocks all of them.
+- PACKR stays a server-computer tool: other devices can only fetch a finished
+  download through its QR link (after the PIN).
 
 ## Good to know
 

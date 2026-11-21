@@ -16,6 +16,8 @@
    ============================================================================ */
 
 const http = require("http");
+const https = require("https");
+const net  = require("net");
 const fs   = require("fs");
 const path = require("path");
 const os   = require("os");
@@ -189,11 +191,29 @@ const children = {};   // app.id -> { proc, restarts, state: starting|running|fa
 
 function startApp(app) {
   if (!appInstalled(app)) return;
+  const c = children[app.id] = children[app.id] || { restarts: 0 };
+  // With the PIN lock on, the app is moved to a private port on this computer
+  // only, and the hub takes over its usual port to check the PIN (see APP
+  // FRONT DOORS below). First start: pick the private port, open the door.
+  if (PIN && !c.privatePort) {
+    c.state = "starting";
+    return freePort(port => {
+      if (!port) { c.state = "failed"; return console.error("  [" + app.id + "] could not reserve a private port"); }
+      c.privatePort = port;
+      openFrontDoor(app, c);
+      startApp(app);
+    });
+  }
   const entry = appEntry(app);
   const env = Object.assign({}, process.env);
   env[app.portEnv || "PORT"] = String(app.port);
-  const proc = spawn(process.execPath, [entry], { cwd: appDir(app), env });
-  const c = children[app.id] = children[app.id] || { restarts: 0 };
+  const args = [entry];
+  if (PIN) {
+    args.unshift("--require", path.join(ROOT, "hub-guard.js"));
+    env.HUB_GUARD_PORTS = JSON.stringify({ [app.port]: c.privatePort });
+    delete env.ARCADE_HTTPS;          // the hub serves ARCADE's HTTPS port itself (PIN-checked)
+  }
+  const proc = spawn(process.execPath, args, { cwd: appDir(app), env });
   c.proc = proc; c.state = "starting";
 
   const tag = "[" + app.id + "] ";
@@ -227,6 +247,7 @@ function shutdown() {
     if (c.proc && c.proc.exitCode === null) { try { c.proc.kill(); } catch (e) {} }
   }
   server.close();
+  for (const d of frontDoors) { try { d.close(); } catch (e) {} }
   // Any app that ignores the polite stop gets force-killed before we leave —
   // no orphaned servers holding ports after the hub window closes.
   setTimeout(() => {
@@ -242,7 +263,8 @@ process.on("SIGTERM", shutdown);
 
 // Ask a child app whether it is answering HTTP yet (used by the loading screens).
 function probeApp(app, cb) {
-  const req = http.get({ host: "127.0.0.1", port: app.port, path: "/", timeout: 1500 }, res => {
+  const port = (children[app.id] || {}).privatePort || app.port;
+  const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: 1500 }, res => {
     res.resume();
     cb(res.statusCode > 0);
   });
@@ -403,6 +425,121 @@ f.addEventListener("submit", async e => {
 </script>
 </body></html>`;
 
+// Tell a device it has to unlock first: the PIN page for a browser, JSON otherwise.
+function sendLocked(req, res) {
+  const wantsPage = /text\/html/.test(req.headers.accept || "") && (req.method === "GET" || req.method === "HEAD");
+  if (wantsPage) {
+    res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    return res.end(req.method === "HEAD" ? "" : LOCK_PAGE);
+  }
+  res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify({ error: "locked" }));
+}
+
+/* ============================================================================
+   APP FRONT DOORS — the PIN for REEL, ARCADE and PACKR.
+   Those apps run their own servers on their own ports, so the hub's PIN check
+   never saw their traffic. With the PIN on, each app is started behind
+   hub-guard.js (private port, this computer only) and the hub listens on the
+   app's public port instead: it checks the PIN, then passes the request —
+   streaming, seeking, uploads and WebSockets included — straight through.
+   The browser's PIN cookie is shared by every port on the hub's address, so
+   unlocking the hub unlocks the apps too. Nothing here runs with the PIN off.
+   ============================================================================ */
+const frontDoors = [];
+
+function freePort(cb) {
+  const probe = net.createServer();
+  probe.once("error", () => cb(0));
+  probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => cb(port)); });
+}
+
+// The hub's own cookie is no business of the app behind the door.
+function withoutPinCookie(cookie) {
+  return String(cookie || "").split(";").filter(p => p.split("=")[0].trim() !== PIN_COOKIE).join(";").trim();
+}
+
+// Apps marked "localOnly" (PACKR) are for the server computer; other devices
+// may only fetch the paths listed in the app's "lanPaths" (finished downloads).
+function lanMayReach(app, req, pathname) {
+  if (!app.localOnly) return true;
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  return (app.lanPaths || []).some(p => pathname.startsWith(p));
+}
+
+function openFrontDoor(app, c) {
+  const tag = "  [" + app.id + "] ";
+
+  const onRequest = (req, res) => {
+    let pathname = "/";
+    try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
+    const local = requestIsLocal(req);
+    if (!local && !hasPinCookie(req)) {
+      if (pathname === "/api/unlock") return handleUnlock(req, res);
+      return sendLocked(req, res);
+    }
+    if (!local && !lanMayReach(app, req, pathname)) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(app.name + " is used on the server computer itself.");
+    }
+    const headers = Object.assign({}, req.headers);
+    const cookie = withoutPinCookie(headers.cookie);
+    if (cookie) headers.cookie = cookie; else delete headers.cookie;
+    const upstream = http.request(
+      { host: "127.0.0.1", port: c.privatePort, method: req.method, path: req.url, headers },
+      ures => { res.writeHead(ures.statusCode, ures.statusMessage, ures.headers); ures.pipe(res); }
+    );
+    upstream.on("error", () => {
+      if (res.headersSent) return res.destroy();
+      res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(app.name + " is still starting — try again in a moment.");
+    });
+    res.on("close", () => upstream.destroy());
+    req.pipe(upstream);
+  };
+
+  // WebSockets (ARCADE's phone-as-controller link) get the same check.
+  const onUpgrade = (req, socket, head) => {
+    let pathname = "/";
+    try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
+    const local = requestIsLocal(req);
+    if ((!local && !hasPinCookie(req)) || (!local && !lanMayReach(app, req, pathname))) return socket.destroy();
+    const upstream = net.connect(c.privatePort, "127.0.0.1", () => {
+      let raw = req.method + " " + req.url + " HTTP/" + req.httpVersion + "\r\n";
+      for (let i = 0; i < req.rawHeaders.length; i += 2) raw += req.rawHeaders[i] + ": " + req.rawHeaders[i + 1] + "\r\n";
+      upstream.write(raw + "\r\n");
+      if (head && head.length) upstream.write(head);
+      socket.pipe(upstream); upstream.pipe(socket);
+    });
+    upstream.on("error", () => socket.destroy());
+    socket.on("error", () => upstream.destroy());
+    socket.on("close", () => upstream.destroy());
+    upstream.on("close", () => socket.destroy());
+  };
+
+  const open = (srv, port, label) => {
+    srv.requestTimeout = 0;                         // long uploads and streams are normal here
+    srv.on("request", onRequest);
+    srv.on("upgrade", onUpgrade);
+    srv.on("error", err => console.error(tag + label + " port " + port + " could not be opened: " + (err && err.code === "EADDRINUSE" ? "already in use" : err.message)));
+    srv.listen(port);
+    frontDoors.push(srv);
+  };
+  open(http.createServer(), app.port, "PIN door on");
+
+  // ARCADE's optional HTTPS mode (ARCADE_HTTPS=1, for Java games over the LAN):
+  // the hub serves that port too, with ARCADE's own certificate.
+  if (app.id === "arcade" && process.env.ARCADE_HTTPS === "1") {
+    try {
+      const key  = fs.readFileSync(path.join(appDir(app), "certs", "key.pem"));
+      const cert = fs.readFileSync(path.join(appDir(app), "certs", "cert.pem"));
+      open(https.createServer({ key, cert }), parseInt(process.env.HTTPS_PORT, 10) || 8443, "HTTPS PIN door on");
+    } catch (e) {
+      console.error(tag + "ARCADE_HTTPS=1 but certs/key.pem + certs/cert.pem are missing — run  node make-cert.js  in apps/arcade");
+    }
+  }
+}
+
 // Last line of defence: whatever goes wrong inside one request, answer that
 // request with an error and keep the hub (and every app) running.
 const server = http.createServer((req, res) => {
@@ -424,15 +561,7 @@ function handleRequest(req, res) {
   if (PIN) {
     if (pathname === "/api/unlock") return handleUnlock(req, res);
     const open = PUBLIC_FILES.has(pathname.slice(1)) || requestIsLocal(req) || hasPinCookie(req);
-    if (!open) {
-      const wantsPage = /text\/html/.test(req.headers.accept || "") && (req.method === "GET" || req.method === "HEAD");
-      if (wantsPage) {
-        res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        return res.end(req.method === "HEAD" ? "" : LOCK_PAGE);
-      }
-      res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(JSON.stringify({ error: "locked" }));
-    }
+    if (!open) return sendLocked(req, res);
   }
 
   // ---- health check --------------------------------------------------------
@@ -576,7 +705,7 @@ server.listen(PORT, () => {
     console.log("   PIN lock is ON — other devices type the PIN once (remembered " + PIN_DAYS + " days).");
     if (PIN.length < 4) console.log("   (That PIN is very short — 4 or more characters is safer.)");
     const own = APPS.filter(a => a.type === "node" && appInstalled(a));
-    if (own.length) console.log("   Note: " + own.map(a => a.name).join(", ") + " run on their own ports and are not behind the PIN.");
+    if (own.length) console.log("   It also covers " + own.map(a => a.name).join(", ") + " on their own ports.");
     console.log("");
   }
   console.log("   Leave this window OPEN while anyone is using the hub.");

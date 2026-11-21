@@ -222,6 +222,7 @@
       "port": 4477,
       "portEnv": "PACKR_PORT",
       "localOnly": true,
+      "lanPaths": ["/dl/"],
       "enabled": true,
       "color1": "#5cb872",
       "color2": "#2f7a45",
