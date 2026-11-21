@@ -102,6 +102,22 @@ long recordings (20 minutes or more — teachings, audiobooks). Press the **×**
 on a card to forget it. Positions are remembered **per device**, in that
 device's browser.
 
+## Getting around
+
+- **Phones** — the menu button (top left) slides the full menu in; swipe the
+  banner on Home to change slides.
+- **TV remote or keyboard** — arrow keys move between tiles, **Enter** opens,
+  **Esc** closes a film, **/** jumps to search, **Space** pauses the music.
+- **Search** — on Home it looks through the apps *and* inside every folder
+  library; on a library page it filters that library.
+- **Back button** — steps back through the hub's pages instead of leaving it.
+- **Next episode** — when a video in a folder ends, the next one starts.
+- **New files** — press the refresh button beside a library's item count to
+  pick up files you just dropped in, without reloading.
+- The startup animation plays once per visit; after that the hub opens straight
+  away. Accent colour, hub name and the ambient background (Settings) are
+  remembered on each device.
+
 ## Put it on your home screen
 
 Open the hub on a phone, tablet or TV browser and choose **Add to Home Screen**
