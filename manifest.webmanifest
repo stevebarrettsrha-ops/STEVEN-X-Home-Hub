@@ -1,0 +1,17 @@
+{
+  "name": "STEVEN X — Home Hub",
+  "short_name": "STEVEN X",
+  "description": "The home server for the whole STEVEN X collection — movies, music, scripture, books, games and apps on your own Wi-Fi.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060b15",
+  "theme_color": "#060b15",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

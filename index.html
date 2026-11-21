@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>STEVEN X — Home Hub</title>
+<!-- Installable: "Add to Home Screen" on phones, tablets and TV browsers -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#060b15">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STEVEN X">
 <style>
 /* ============================================================
    STEVEN X — HOME HUB — a fully-offline home entertainment hub
@@ -241,6 +250,17 @@ input{font-family:inherit}
 .tile .meta small{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
 
 /* ---------- track list (music) ---------- */
+/* folder groups (albums, series) inside a library */
+.lib-group{margin-bottom:26px}
+.lib-group .cat-head h3{white-space:normal;overflow-wrap:anywhere}
+.lib-group .cat-head span{flex:1}
+/* resume progress + continue-watching row */
+.tile .cover .prog{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(0,0,0,.55)}
+.tile .cover .prog i{display:block;height:100%;background:var(--accent)}
+.tile .forget{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.6);
+  color:#fff;font-size:16px;line-height:1;display:grid;place-items:center;opacity:.75}
+.tile .forget:hover,.tile .forget:focus-visible{opacity:1;background:rgba(0,0,0,.85)}
+.track .t-left{font-size:10.5px;color:var(--accent);flex:none;margin-right:10px}
 .tracks{display:flex;flex-direction:column;gap:4px}
 .track{
   display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:11px;
@@ -349,16 +369,72 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
   transition:transform .4s cubic-bezier(.2,.8,.3,1);max-width:80vw;text-align:center}
 #toast.on{transform:translate(-50%,0)}
 
-/* ---------- responsive ---------- */
+/* ---------- keyboard / TV-remote focus ---------- */
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+input[type=range]:focus-visible{outline:3px solid var(--accent);outline-offset:5px}
+.tile:focus-visible,.sys-card:focus-visible,.launch:focus-visible{
+  outline:none;transform:translateY(-5px);box-shadow:0 0 0 3px var(--accent),0 16px 32px rgba(0,0,0,.5)}
+.track:focus-visible{outline-offset:-2px;background:var(--panel)}
+.nav-item:focus-visible{outline-offset:-2px;color:var(--txt)}
+
+/* ---------- small fixes ---------- */
+.btn svg{width:16px;height:16px;flex:none}
+.sidebar{overflow-y:auto;min-height:0;scrollbar-width:thin}
+#toast{opacity:0;visibility:hidden;transition:transform .4s cubic-bezier(.2,.8,.3,1),opacity .3s,visibility .3s}
+#toast.on{opacity:1;visibility:visible}
+#boot.quick{transition-duration:.3s}
+#boot.quick .boot-inner,#boot.quick .boot-skip,#boot.quick #bootStars{display:none}
+/* library tiles: big initials, with the type icon as a small corner badge */
+.tile .cover > svg{position:absolute;left:10px;top:10px;width:18px;height:18px;opacity:.75}
+.tile .cover .ini{color:rgba(255,255,255,.2)}
+.section-head .icon-btn{align-self:center;width:30px;height:30px}
+.section-head .icon-btn.busy svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.no-results{display:none;text-align:center;color:var(--mut);font-size:13px;padding:44px 16px}
+.no-results b{display:block;color:var(--txt);font-size:15px;margin-bottom:6px;overflow-wrap:anywhere}
+.set-link{font-size:12px;color:var(--mut);text-decoration:underline;margin-top:14px}
+.set-link:hover{color:var(--txt)}
+.menu-btn{display:none;flex:none}
+#scrim{display:none}
+@supports (height:100dvh){ #shell,.main{height:100dvh} }
+
+/* ---------- responsive: phones and small tablets ---------- */
 @media (max-width:860px){
-  :root{--sidebar:66px}
-  .nav-item span,.brand .brand-txt,.nav-label,.nav-sub,.side-foot{display:none}
-  .nav-item{justify-content:center}
-  .slide h1{font-size:30px}
-  .slide{padding:0 34px}
-  .clock{display:none}
-  #dock .d-info{width:120px}
+  #shell.on{grid-template-columns:1fr}
+  /* the sidebar becomes a slide-in menu with full labels */
+  .sidebar{position:fixed;top:0;bottom:0;left:0;width:min(288px,84vw);z-index:70;background:#0c1524;
+    transform:translateX(-104%);transition:transform .28s ease;backdrop-filter:none}
+  body.nav-open .sidebar{transform:none;box-shadow:var(--shadow)}
+  body.nav-open #scrim{display:block;position:fixed;inset:0;z-index:65;background:rgba(2,4,9,.62)}
+  .nav-item{padding:13px 12px}
+  .menu-btn{display:grid}
+  #fsBtn,.clock{display:none}
+  .topbar{padding:10px 14px;gap:10px}
+  .page-title{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:42vw}
+  .search{flex:1;width:auto;min-width:0;margin-left:0}
+  .search input{font-size:16px}                 /* stops iOS zooming the page on focus */
+  .content{padding:16px 14px 150px}
+  .hero{height:auto}
+  .slide{padding:26px 22px 46px;align-items:flex-start}
+  .slide h1{font-size:28px}
+  .slide .eyebrow{letter-spacing:.22em}
+  .slide .glyph{width:230px;height:230px;right:-50px;bottom:-50px}
+  .hero-nav{display:none}                        /* swipe instead */
+  .sys-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .sys-card{height:122px;padding:13px}
+  .tile-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr)) !important;gap:12px}
+  .launch-grid{grid-template-columns:1fr}
+  .cat-head span{display:none}.cat-head h3{flex:1;white-space:normal}
+  .track .t-ext{display:none}
+  .set-grid{grid-template-columns:1fr !important}
+  #dock{left:0;padding:10px 14px;gap:10px;flex-wrap:wrap}
+  #dock .d-info{flex:1;width:auto}
+  .d-seek{order:5;flex-basis:100%}
   #viz,.d-vol{display:none}
+  #toast{bottom:96px;max-width:90vw}
+  #vmodal{padding:0}
+  .vbox{padding:10px}
+  #vplayer{border-radius:8px;max-height:82vh}
 }
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01s !important;transition-duration:.01s !important}
@@ -383,12 +459,18 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
   </div>
   <div class="boot-skip">Click anywhere to skip</div>
 </div>
+<script>
+// The full startup animation plays once per visit; coming back from an app or
+// refreshing goes straight to the hub.
+try{ if(sessionStorage.getItem("stevenx.booted")) document.getElementById("boot").classList.add("quick"); }catch(e){}
+</script>
 
 <!-- ================= SHELL ================= -->
 <div id="shell">
 
   <!-- sidebar -->
-  <aside class="sidebar">
+  <div id="scrim"></div>
+  <aside class="sidebar" id="sidebar" aria-label="Main menu">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true"></div>
       <div class="brand-txt"><b id="brandName">STEVEN X</b><small>Home Hub</small></div>
@@ -441,27 +523,35 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
   <!-- main -->
   <div class="main">
     <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
       <div class="page-title" id="pageTitle">Home</div>
       <div class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="searchBox" type="text" placeholder="Search this library…">
+        <input id="searchBox" type="search" placeholder="Search apps and libraries…" aria-label="Search" autocomplete="off">
       </div>
       <div class="clock"><b id="clockTime">--:--</b><small id="clockDate">—</small></div>
-      <button class="icon-btn" id="fsBtn" title="Fullscreen">
+      <button class="icon-btn" id="fsBtn" title="Fullscreen" aria-label="Fullscreen">
         <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
       </button>
     </header>
 
     <div class="content" id="content">
+      <div class="no-results" id="noResults" role="status"><b></b>Check the spelling, or try a shorter word.</div>
 
       <!-- HOME -->
       <section class="page active" id="page-home">
         <div class="hero" id="hero">
           <div class="hero-track" id="heroTrack"></div>
-          <button class="hero-nav prev" id="heroPrev"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-          <button class="hero-nav next" id="heroNext"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+          <button class="hero-nav prev" id="heroPrev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <button class="hero-nav next" id="heroNext" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
           <div class="hero-dots" id="heroDots"></div>
         </div>
+        <div class="section-head" id="findHead" style="display:none"><h2>In Your Libraries</h2><div class="rule"></div><span class="count" id="findCount"></span></div>
+        <div class="tile-grid" id="findGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))"></div>
+        <div class="section-head" id="contHead" style="display:none"><h2>Continue Watching</h2><div class="rule"></div><span class="count" id="contCount"></span></div>
+        <div class="tile-grid" id="contGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))"></div>
         <div class="section-head" id="appsHead" style="display:none"><h2>Full Apps</h2><div class="rule"></div><span class="count" id="appsCount"></span></div>
         <div class="app-cats" id="appsGrid" style="display:none"></div>
         <div class="section-head"><h2>Folder Libraries</h2><div class="rule"></div><span class="count">6 installed</span></div>
@@ -484,7 +574,8 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
             <div class="set-row"><label>Accent color</label><input type="color" id="setAccent" value="#5cb872"></div>
             <div class="set-row"><label>Hub name</label><input type="text" id="setName" maxlength="12"></div>
             <div class="set-row"><label>Ambient background</label><div class="switch on" id="setAmbient"><i></i></div></div>
-            <p style="margin-top:14px">These apply instantly for this session. To make them permanent, edit the <code>CONFIG</code> block at the top of this file's script.</p>
+            <p style="margin-top:14px">Changes apply instantly and are remembered on this device.</p>
+            <button class="set-link" id="setReset">Reset appearance</button>
           </div>
           <div class="set-card">
             <h3>Folder Setup</h3>
@@ -514,6 +605,8 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
               <li>Movies and music play inside the hub. Books and scripture open in a new tab.</li>
               <li>Multi-file HTML games launch best from a tile — add them in <code>CONFIG.launchers</code>.</li>
               <li>Press the fullscreen button for TV mode.</li>
+              <li>On a TV remote or keyboard: arrow keys move around, <b style="color:var(--txt)">Enter</b> opens, <b style="color:var(--txt)">Esc</b> closes a film, <b style="color:var(--txt)">/</b> jumps to search and <b style="color:var(--txt)">Space</b> pauses the music.</li>
+              <li>When an episode ends, the next one in the same folder starts by itself.</li>
             </ol>
           </div>
         </div>
@@ -524,11 +617,11 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
 </div>
 
 <!-- video modal -->
-<div id="vmodal">
+<div id="vmodal" role="dialog" aria-modal="true" aria-labelledby="vtitle">
   <div class="vbox">
     <div class="vhead">
       <b id="vtitle">—</b>
-      <button class="icon-btn" id="vclose" title="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button class="icon-btn" id="vclose" title="Close" aria-label="Close video"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <video id="vplayer" controls></video>
   </div>
@@ -539,24 +632,24 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
   <div class="d-art"><svg viewBox="0 0 24 24"><path d="M9 18V6l11-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div>
   <div class="d-info"><b id="dTitle">—</b><small id="dSub">—</small></div>
   <div class="d-ctl">
-    <button class="icon-btn" id="dPrev"><svg viewBox="0 0 24 24"><path d="M17 5v14L8 12l9-7Z"/><path d="M6 5v14"/></svg></button>
-    <button class="icon-btn play-main" id="dPlay"><svg viewBox="0 0 24 24" id="dPlayIco"><path d="M8 5v14l11-7L8 5Z" fill="currentColor" stroke="none"/></svg></button>
-    <button class="icon-btn" id="dNext"><svg viewBox="0 0 24 24"><path d="M7 5v14l9-7-9-7Z"/><path d="M18 5v14"/></svg></button>
+    <button class="icon-btn" id="dPrev" title="Previous track" aria-label="Previous track"><svg viewBox="0 0 24 24"><path d="M17 5v14L8 12l9-7Z"/><path d="M6 5v14"/></svg></button>
+    <button class="icon-btn play-main" id="dPlay" title="Play / pause" aria-label="Play or pause"><svg viewBox="0 0 24 24" id="dPlayIco"><path d="M8 5v14l11-7L8 5Z" fill="currentColor" stroke="none"/></svg></button>
+    <button class="icon-btn" id="dNext" title="Next track" aria-label="Next track"><svg viewBox="0 0 24 24"><path d="M7 5v14l9-7-9-7Z"/><path d="M18 5v14"/></svg></button>
   </div>
   <div class="d-seek">
     <small id="dCur">0:00</small>
-    <input type="range" id="dSeek" min="0" max="1000" value="0">
+    <input type="range" id="dSeek" min="0" max="1000" value="0" aria-label="Position in track">
     <small id="dDur">0:00</small>
   </div>
   <canvas id="viz" width="240" height="72"></canvas>
   <div class="d-vol">
     <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12"/></svg>
-    <input type="range" id="dVol" min="0" max="100" value="90">
+    <input type="range" id="dVol" min="0" max="100" value="90" aria-label="Volume">
   </div>
   <audio id="aplayer"></audio>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 /* ============================================================
@@ -634,9 +727,19 @@ const hueOf = str => { let h=0; for (const c of str) h=(h*31+c.charCodeAt(0))>>>
 const fmtTime = s => { if(!isFinite(s)) return "0:00"; s=Math.floor(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
 const extOf = n => n.includes(".") ? n.split(".").pop().toLowerCase() : "";
 const baseName = n => n.replace(/\.[^.]+$/,"");
+// File names come straight off the disk — escape them before they go into HTML.
+const esc = v => String(v).replace(/[&<>"'`]/g, c => "&#"+c.charCodeAt(0)+";");
 let toastT;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on");
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),3200); }
+
+/* ---------- appearance settings, remembered on this device ---------- */
+const SETTINGS_KEY = "stevenx.settings.v1";
+let SETTINGS = {};
+try{ SETTINGS = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }catch(e){ SETTINGS = {}; }
+function saveSettings(){ try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); }catch(e){} }
+const DEFAULT_NAME = CONFIG.hubName;
+if(typeof SETTINGS.name === "string" && SETTINGS.name.trim()) CONFIG.hubName = SETTINGS.name.trim().slice(0,12).toUpperCase();
 
 /* ============================================================
    BOOT SEQUENCE
@@ -651,7 +754,7 @@ let bootDone = false;
 
 (function boot(){
   $("#bootName").innerHTML = [...CONFIG.hubName].map((ch,i)=>
-    `<span style="animation-delay:${2.1 + i*0.14}s">${ch}</span>`).join("");
+    `<span style="animation-delay:${2.1 + i*0.14}s">${esc(ch)}</span>`).join("");
   $("#bootTag").textContent = CONFIG.tagline;
   $("#brandName").textContent = CONFIG.hubName;
 
@@ -697,8 +800,10 @@ let bootDone = false;
   $("#boot").addEventListener("click", finishBoot);
   addEventListener("keydown", e=>{ if(!bootDone && (e.key==="Enter"||e.key===" ")) finishBoot(); });
 
+  const quick = $("#boot").classList.contains("quick");
   function finishBoot(){
     if(bootDone) return; bootDone = true;
+    try{ sessionStorage.setItem("stevenx.booted","1"); }catch(e){}
     cancelAnimationFrame(raf); clearInterval(msgIv);
     $("#bootFill").style.width="100%";
     $("#bootStatus").textContent = bootMsgs[bootMsgs.length-1];
@@ -706,24 +811,54 @@ let bootDone = false;
       $("#boot").classList.add("out");
       $("#shell").classList.add("on");
       startClock(); buildHome(); buildSystemPages(); startHero();
+      goPage(pageFromHash(), true);
       detectServer().then(ok=>{ if(ok) autoLoadServer(); });
-      setTimeout(()=>$("#boot").remove(), 1200);
-    }, 350);
+      setTimeout(()=>$("#boot").remove(), quick ? 350 : 1200);
+    }, quick ? 0 : 350);
   }
+  if(quick) finishBoot();
 })();
 
 /* ============================================================
    NAVIGATION / CLOCK / SEARCH / FULLSCREEN
    ============================================================ */
-function goPage(id){
-  $$(".nav-item").forEach(b=>b.classList.toggle("active", b.dataset.page===id));
+const PAGE_IDS = ["home", ...SYSTEMS.map(s=>s.id), "settings"];
+const pageFromHash = () => { let h = ""; try{ h = decodeURIComponent(location.hash.slice(1)); }catch(e){} return PAGE_IDS.includes(h) ? h : "home"; };
+// fromHistory: we are following the address bar (back/forward/first load), so don't add a history entry.
+function goPage(id, fromHistory){
+  if(!PAGE_IDS.includes(id)) id = "home";
+  $$(".nav-item").forEach(b=>{
+    const on = b.dataset.page===id;
+    b.classList.toggle("active", on);
+    if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
+  });
   $$(".page").forEach(p=>p.classList.toggle("active", p.id==="page-"+id));
   const sys = SYSTEMS.find(s=>s.id===id);
   $("#pageTitle").textContent = sys ? sys.name : (id==="settings" ? "Settings" : "Home");
-  $("#searchBox").value=""; applySearch("");
+  document.title = (sys ? sys.name : id==="settings" ? "Settings" : "Home") + " — " + CONFIG.hubName;
+  const box = $("#searchBox");
+  box.value = "";
+  box.placeholder = sys ? "Search "+sys.name.toLowerCase()+"…" : id==="settings" ? "Search…" : "Search apps and libraries…";
+  applySearch("");
   $("#content").scrollTop = 0;
+  closeMenu();
+  // Each page gets its own address, so the browser's Back button (and the
+  // back button on a phone or remote) steps through the hub instead of leaving it.
+  if(!fromHistory && pageFromHash() !== id){
+    try{ history.pushState(null, "", id==="home" ? location.pathname+location.search : "#"+id); }catch(e){}
+  }
 }
+addEventListener("popstate", ()=>{ if(bootDone) goPage(pageFromHash(), true); });
 $$(".nav-item").forEach(b=>b.addEventListener("click", ()=>goPage(b.dataset.page)));
+
+/* slide-in menu on phones */
+function closeMenu(){ document.body.classList.remove("nav-open"); $("#menuBtn").setAttribute("aria-expanded","false"); }
+$("#menuBtn").addEventListener("click", ()=>{
+  const open = document.body.classList.toggle("nav-open");
+  $("#menuBtn").setAttribute("aria-expanded", String(open));
+  if(open){ const cur = $(".nav-item.active"); if(cur) cur.focus({preventScroll:true}); }
+});
+$("#scrim").addEventListener("click", closeMenu);
 
 function startClock(){
   const tick=()=>{
@@ -738,8 +873,47 @@ $("#searchBox").addEventListener("input", e=>applySearch(e.target.value));
 function applySearch(q){
   q=q.trim().toLowerCase();
   const page = $(".page.active"); if(!page) return;
+  const home = page.id==="page-home";
+  // On Home, a search also looks inside every folder library.
+  if(home) renderFound(q);
+  let shown = 0;
   page.querySelectorAll("[data-search]").forEach(el=>{
-    el.style.display = !q || el.dataset.search.includes(q) ? "" : "none";
+    const hit = !q || el.dataset.search.includes(q);
+    el.style.display = hit ? "" : "none";
+    if(hit) shown++;
+  });
+  if(home) $("#hero").style.display = q ? "none" : "";
+  const none = $("#noResults");
+  none.style.display = q && !shown ? "block" : "none";
+  if(q && !shown) none.querySelector("b").textContent = "Nothing matches “"+q+"”";
+}
+function renderFound(q){
+  const head = $("#findHead"), grid = $("#findGrid");
+  const rows = [];
+  if(q){
+    for(const sys of SYSTEMS){
+      (libraries[sys.id]||[]).forEach((it,i)=>{ if((it.path||it.name).toLowerCase().includes(q)) rows.push({ sys, it, i }); });
+    }
+  }
+  const show = rows.slice(0,24);
+  head.style.display = show.length ? "" : "none";
+  grid.style.display = show.length ? "grid" : "none";
+  $("#findCount").textContent = rows.length > show.length ? "first "+show.length+" of "+rows.length : rows.length+" found";
+  grid.innerHTML = show.map(r=>tileCard(r.sys, r.it, r.i, true)).join("");
+  bindTiles(grid);
+}
+// Tiles outside their own library page (search results, Continue Watching).
+function bindTiles(grid){
+  grid.querySelectorAll(".tile").forEach(t=>{
+    const sys = SYSTEMS.find(s=>s.id===t.dataset.sys), i = +t.dataset.i;
+    t.addEventListener("click", e=>{
+      if(e.target.closest(".forget")){
+        delete progress[libraries[sys.id][i].url]; storeProgress();
+        renderContinue(); if(libraries[sys.id]) renderLibrary(sys);
+        return;
+      }
+      if(sys.kind==="audio") playTrack(sys.id, i); else openItem(sys, i);
+    });
   });
 }
 
@@ -751,7 +925,7 @@ $("#fsBtn").addEventListener("click", ()=>{
 /* ============================================================
    HOME — hero carousel + system grid
    ============================================================ */
-let heroI = 0, heroIv = null;
+let heroI = 0, heroIv = null, syncSlides = ()=>{};
 
 function buildHome(){
   const track = $("#heroTrack"), dots = $("#heroDots"), grid = $("#sysGrid");
@@ -767,6 +941,19 @@ function buildHome(){
       </div>
     </div>`).join("");
   dots.innerHTML = SYSTEMS.map((_,i)=>`<i data-i="${i}"></i>`).join("");
+  // only the slide on screen can take keyboard focus
+  const slides = $$("#heroTrack .slide");
+  syncSlides = ()=>slides.forEach((sl,i)=>{ sl.inert = i!==heroI; });
+  // swipe on touch screens
+  let sx = null;
+  $("#hero").addEventListener("touchstart", e=>{ sx = e.touches[0].clientX; }, {passive:true});
+  $("#hero").addEventListener("touchend", e=>{
+    if(sx===null) return;
+    const dx = e.changedTouches[0].clientX - sx; sx = null;
+    if(Math.abs(dx) > 40) setHero(heroI + (dx<0 ? 1 : -1), true);
+  }, {passive:true});
+  $("#hero").addEventListener("focusin", stopHero);
+  $("#hero").addEventListener("focusout", startHero);
   dots.querySelectorAll("i").forEach(d=>d.addEventListener("click",()=>setHero(+d.dataset.i,true)));
   $("#heroPrev").addEventListener("click",()=>setHero(heroI-1,true));
   $("#heroNext").addEventListener("click",()=>setHero(heroI+1,true));
@@ -775,7 +962,7 @@ function buildHome(){
   setHero(0);
 
   grid.innerHTML = SYSTEMS.map(s=>`
-    <div class="sys-card" data-search="${s.name.toLowerCase()}" style="background:${s.grad}" onclick="goPage('${s.id}')">
+    <div class="sys-card" tabindex="0" role="button" data-search="${s.name.toLowerCase()}" style="background:${s.grad}" onclick="goPage('${s.id}')">
       <svg class="glyph" viewBox="0 0 24 24">${ICONS[s.icon]}</svg>
       <div><b>${s.name}</b><small>${s.exts.slice(0,4).join(" · ")}</small></div>
       <div class="shine"></div>
@@ -785,6 +972,7 @@ function setHero(i, manual){
   heroI = (i+SYSTEMS.length)%SYSTEMS.length;
   $("#heroTrack").style.transform = `translateX(-${heroI*100}%)`;
   $("#heroDots").querySelectorAll("i").forEach((d,j)=>d.classList.toggle("on",j===heroI));
+  syncSlides();
   if(manual){ stopHero(); startHero(); }
 }
 function startHero(){ stopHero(); heroIv = setInterval(()=>setHero(heroI+1), 5200); }
@@ -816,8 +1004,14 @@ async function loadFromServer(sys){
     const r = await fetch("api/library?sys="+encodeURIComponent(sys.id), {cache:"no-store"});
     if(!r.ok) return 0;
     const j = await r.json();
-    if(!j.items || !j.items.length) return 0;
-    libraries[sys.id] = j.items.slice(0,600);   // {name, path, url, ext}
+    if(!j.items || !j.items.length){
+      // folder emptied since the last look — go back to the "drop files here" card
+      delete libraries[sys.id];
+      $("#lib-"+sys.id).innerHTML = emptyState(sys);
+      $("#count-"+sys.id).textContent = "";
+      return 0;
+    }
+    libraries[sys.id] = sortLibrary(j.items).slice(0,600);   // {name, path, url, ext}
     renderLibrary(sys);
     return libraries[sys.id].length;
   }catch(e){ return 0; }
@@ -829,6 +1023,7 @@ async function autoLoadServer(){
   loadApps();
   let total = 0;
   for(const s of SYSTEMS) total += await loadFromServer(s);
+  renderContinue();
   if(total) toast(`Home server connected — ${total} item${total>1?"s":""} loaded across your libraries`);
 }
 
@@ -875,7 +1070,7 @@ function appGroups(){
 
 function appCard(a, cat){
   return `
-    <div class="sys-card app-card ${a.installed?"":"disabled"}" data-search="${(a.name+" "+a.title+" "+cat).toLowerCase()}"
+    <div class="sys-card app-card ${a.installed?"":"disabled"}" tabindex="0" role="button" data-search="${(a.name+" "+a.title+" "+cat).toLowerCase()}"
          style="background:linear-gradient(120deg,${a.color2},${a.color1})" onclick="openApp('${a.id}')">
       <svg class="glyph" viewBox="0 0 24 24">${ICONS[a.icon]||ICONS.play}</svg>
       <span class="chip">${a.type==="node" ? "App · port "+a.port : "Full App"}</span>
@@ -949,15 +1144,29 @@ function buildSystemPages(){
             <div class="go"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></div>
           </a>`).join("")}
       </div>` : ""}
-      <div class="section-head"><h2>Library</h2><div class="rule"></div><span class="count" id="count-${s.id}"></span></div>
-      <div id="lib-${s.id}">
+      <div class="section-head"><h2>Library</h2><div class="rule"></div><span class="count" id="count-${s.id}"></span>
+        <button class="icon-btn" id="rescan-${s.id}" title="Check the folder for new files" aria-label="Check the ${s.id} folder for new files">
+          <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M20 20v-4.5h-4.5"/></svg>
+        </button></div>
+      <div id="lib-${s.id}">${emptyState(s)}</div>`;
+    $("#rescan-"+s.id).addEventListener("click", async e=>{
+      const btn = e.currentTarget;
+      if(!SERVER){ toast("Open the hub through the home server to load this library"); return; }
+      btn.classList.add("busy");
+      const n = await loadFromServer(s);
+      btn.classList.remove("busy");
+      renderContinue();
+      toast(n ? `${s.name}: ${n} item${n===1?"":"s"}` : `Nothing in the ${s.id}/ folder yet`);
+    });
+  }
+}
+function emptyState(s){
+  return `
         <div class="empty">
           ${svgIcon(s.icon)}
           <b>No ${s.name.toLowerCase()} yet</b>
           <p>Drop your files into the <b>${s.id}/</b> folder next to <b>server.js</b>, then start the STEVEN X home server (or refresh). ${s.kind==="video"?"Films play in the built-in theatre.":s.kind==="audio"?"Tracks play in the dock below with a live visualizer.":s.kind==="docs"?"Documents open in a fresh tab for reading.":"Single-file HTML games open instantly; multi-file games launch best from a tile above."}</p>
-        </div>
-      </div>`;
-  }
+        </div>`;
 }
 
 // Libraries are populated by the home server (see loadFromServer above);
@@ -968,35 +1177,141 @@ async function fileOf(item){
   return null;
 }
 
+// Folder of an item, relative to its library ("" for files at the top level).
+const dirOf = it => { const p = it.path || it.name; const k = p.lastIndexOf("/"); return k === -1 ? "" : p.slice(0,k); };
+const natural = new Intl.Collator(undefined, { numeric:true, sensitivity:"base" });
+// Top-level files first, then folder by folder; "Episode 2" sorts before "Episode 10".
+function sortLibrary(items){
+  return items.slice().sort((a,b)=> natural.compare(dirOf(a), dirOf(b)) || natural.compare(a.name, b.name));
+}
+
+function trackRow(sys, it, i, n){
+  const p = progressOf(it);
+  return `
+      <div class="track" tabindex="0" role="button" data-search="${esc((it.path||it.name).toLowerCase())}" data-i="${i}" id="trk-${sys.id}-${i}">
+        <span class="num">${n}</span>
+        <span class="eq"><i></i><i></i><i></i></span>
+        <div class="t-info"><b>${esc(baseName(it.name))}</b><small>${esc(it.path)}</small></div>
+        ${p ? `<span class="t-left">${esc(leftText(p))}</span>` : ""}
+        <span class="t-ext">${esc(extOf(it.name))}</span>
+      </div>`;
+}
+function tileCard(sys, it, i, wide, extra){
+  const h = hueOf(it.name), p = progressOf(it);
+  return `
+        <div class="tile ${wide?"wide":""}" tabindex="0" role="button" data-search="${esc((it.path||it.name).toLowerCase())}" data-i="${i}" data-sys="${sys.id}">
+          <div class="cover" style="background:linear-gradient(140deg,hsl(${h} 55% 22%),hsl(${(h+40)%360} 65% 40%))">
+            <span class="ini">${esc(baseName(it.name).slice(0,2).toUpperCase())}</span>
+            ${svgIcon(sys.icon)}
+            <div class="play"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg></span></div>
+            ${p ? `<div class="prog"><i style="width:${Math.round(p.t/p.d*100)}%"></i></div>` : ""}
+            ${extra||""}
+          </div>
+          <div class="meta"><b title="${esc(it.name)}">${esc(baseName(it.name))}</b><small>${esc(p ? leftText(p) : extOf(it.name))}</small></div>
+        </div>`;
+}
+
 function renderLibrary(sys){
   const box = $("#lib-"+sys.id), items = libraries[sys.id];
   $("#count-"+sys.id).textContent = items.length+" items";
-  if(sys.kind==="audio"){
-    box.innerHTML = `<div class="tracks">`+items.map((it,i)=>`
-      <div class="track" data-search="${it.name.toLowerCase()}" data-i="${i}" id="trk-${sys.id}-${i}">
-        <span class="num">${i+1}</span>
-        <span class="eq"><i></i><i></i><i></i></span>
-        <div class="t-info"><b>${baseName(it.name)}</b><small>${it.path}</small></div>
-        <span class="t-ext">${extOf(it.name)}</span>
-      </div>`).join("")+`</div>`;
-    box.querySelectorAll(".track").forEach(t=>t.addEventListener("click",()=>playTrack(sys.id,+t.dataset.i)));
-  } else {
-    const wide = sys.kind==="video";
-    box.innerHTML = `<div class="tile-grid" style="${wide?"grid-template-columns:repeat(auto-fill,minmax(210px,1fr))":""}">`
-      +items.map((it,i)=>{
-        const h = hueOf(it.name);
-        return `
-        <div class="tile ${wide?"wide":""}" data-search="${it.name.toLowerCase()}" data-i="${i}">
-          <div class="cover" style="background:linear-gradient(140deg,hsl(${h} 55% 22%),hsl(${(h+40)%360} 65% 40%))">
-            <span class="ini">${baseName(it.name).slice(0,2).toUpperCase()}</span>
-            ${svgIcon(sys.icon)}
-            <div class="play"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg></span></div>
-          </div>
-          <div class="meta"><b title="${it.name}">${baseName(it.name)}</b><small>${extOf(it.name)}</small></div>
-        </div>`;}).join("")+`</div>`;
-    box.querySelectorAll(".tile").forEach(t=>t.addEventListener("click",()=>openItem(sys,+t.dataset.i)));
+  const isAudio = sys.kind==="audio", wide = sys.kind==="video";
+  const gridStyle = wide ? "grid-template-columns:repeat(auto-fill,minmax(210px,1fr))" : "";
+  const wrap = rows => isAudio ? `<div class="tracks">${rows}</div>` : `<div class="tile-grid" style="${gridStyle}">${rows}</div>`;
+  const row  = (it,i,n) => isAudio ? trackRow(sys,it,i,n) : tileCard(sys,it,i,wide);
+
+  // Music and movies are grouped by the folder they sit in — one block per
+  // album / series / season. Libraries with no sub-folders stay a flat list.
+  const groups = [];
+  if(isAudio || wide){
+    items.forEach((it,i)=>{
+      const d = dirOf(it);
+      let g = groups[groups.length-1];
+      if(!g || g.dir !== d){ g = { dir:d, rows:[] }; groups.push(g); }
+      g.rows.push([it,i]);
+    });
   }
+  if(groups.length > 1 || (groups.length === 1 && groups[0].dir)){
+    const loose = isAudio ? "Singles" : "Movies";
+    const unit  = isAudio ? "track" : "video";
+    // Each group carries the names of everything inside it, so a search keeps
+    // the folder heading on screen while non-matching items hide.
+    box.innerHTML = groups.map(g=>`
+      <div class="lib-group" data-search="${esc(g.rows.map(([it])=>it.path||it.name).join(" ").toLowerCase())}">
+        <div class="cat-head"><h3>${esc(g.dir ? g.dir.split("/").join(" · ") : loose)}</h3><span></span><em>${g.rows.length} ${unit}${g.rows.length===1?"":"s"}</em></div>
+        ${wrap(g.rows.map(([it,i],n)=>row(it,i,n+1)).join(""))}
+      </div>`).join("");
+  } else {
+    box.innerHTML = wrap(items.map((it,i)=>row(it,i,i+1)).join(""));
+  }
+  if(isAudio) box.querySelectorAll(".track").forEach(t=>t.addEventListener("click",()=>playTrack(sys.id,+t.dataset.i)));
+  else      box.querySelectorAll(".tile").forEach(t=>t.addEventListener("click",()=>openItem(sys,+t.dataset.i)));
+  if(isAudio) markPlaying();
   applySearch($("#searchBox").value);
+}
+
+/* ============================================================
+   RESUME — remembers where each film (and any long recording)
+   was stopped, on this device, and offers it back on the Home
+   page under "Continue Watching".
+   ============================================================ */
+const PROGRESS_KEY  = "stevenx.progress.v1";
+const RESUME_MIN    = 30;         // don't bother remembering the first few seconds
+const RESUME_DONE   = 0.95;       // past this point it counts as finished
+const LONG_AUDIO    = 20 * 60;    // only audio this long (sermons, audiobooks) is remembered
+const KEEP_DAYS     = 120;
+let progress = {};
+try{ progress = JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; }catch(e){ progress = {}; }
+(function pruneProgress(){
+  const cutoff = Date.now() - KEEP_DAYS*864e5;
+  for(const k of Object.keys(progress)) if(!progress[k] || !(progress[k].at > cutoff)) delete progress[k];
+})();
+function storeProgress(){ try{ localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); }catch(e){} }
+function progressOf(it){ const p = it && it.url && progress[it.url]; return p && p.d > 0 ? p : null; }
+function leftText(p){
+  const m = Math.max(1, Math.round((p.d - p.t)/60));
+  return m >= 60 ? Math.floor(m/60)+"h "+(m%60)+"m left" : m+" min left";
+}
+// Record the position of a playing <video>/<audio>. Returns true if anything changed.
+function saveProgress(it, sysId, el){
+  if(!it || !it.url) return false;
+  const t = el.currentTime, d = el.duration;
+  if(!isFinite(d) || d <= 0) return false;
+  if(t < RESUME_MIN || t/d >= RESUME_DONE){
+    if(!progress[it.url]) return false;
+    delete progress[it.url];
+  } else {
+    progress[it.url] = { t:Math.floor(t), d:Math.floor(d), at:Date.now(), sys:sysId };
+  }
+  storeProgress();
+  return true;
+}
+// Jump a freshly-loaded player to its saved spot.
+function resumeInto(it, el){
+  const p = progressOf(it);
+  if(!p) return;
+  const seek = ()=>{
+    if(el.dataset.item !== it.url) return;          // user already moved on
+    try{ el.currentTime = Math.min(p.t, Math.max(0,(el.duration||p.d)-5)); }catch(e){}
+    toast("Resuming from "+fmtTime(p.t)+" — drag back to the start to watch from the beginning");
+  };
+  if(el.readyState >= 1) seek(); else el.addEventListener("loadedmetadata", seek, { once:true });
+}
+
+function renderContinue(){
+  const head = $("#contHead"), grid = $("#contGrid");
+  if(!head || !grid) return;
+  const rows = [];
+  for(const sys of SYSTEMS){
+    (libraries[sys.id]||[]).forEach((it,i)=>{ const p = progressOf(it); if(p) rows.push({ sys, it, i, p }); });
+  }
+  rows.sort((a,b)=>b.p.at-a.p.at);
+  const show = rows.slice(0,12);
+  head.style.display = grid.style.display = show.length ? "" : "none";
+  if(show.length) grid.style.display = "grid";
+  $("#contCount").textContent = show.length ? show.length+" in progress" : "";
+  grid.innerHTML = show.map(r=>tileCard(r.sys, r.it, r.i, true,
+    `<button class="forget" title="Remove from Continue Watching" aria-label="Remove from Continue Watching">&times;</button>`)).join("");
+  bindTiles(grid);
 }
 
 async function openItem(sys, i){
@@ -1016,22 +1331,64 @@ async function openItem(sys, i){
 
 /* ---------- video theatre ---------- */
 let vURL = null;   // holds a temporary object URL to revoke; null for server streams
+let vItem = null, vSaved = 0, vReturn = null;
 async function openVideo(it){
   const v = $("#vplayer");
   const src = await mediaSrc(it);
   if(!src){ toast("Couldn't open that file"); return; }
   if(vURL) URL.revokeObjectURL(vURL);
   vURL = src.revoke ? src.url : null;
+  vItem = it; v.dataset.item = it.url || "";
   v.src = src.url;
   $("#vtitle").textContent = baseName(it.name);
+  if(!$("#vmodal").classList.contains("on")) vReturn = document.activeElement;
   $("#vmodal").classList.add("on");
+  resumeInto(it, v);
   v.play().catch(()=>{});
+  v.focus({preventScroll:true});               // remote / keyboard now drive the player
+}
+// The next file in the same folder (an episode list); null for loose films.
+function nextInFolder(it){
+  const list = libraries.movies || [], i = list.indexOf(it);
+  const n = i === -1 ? null : list[i+1];
+  return n && dirOf(it) && dirOf(n) === dirOf(it) ? n : null;
 }
 function closeVideo(){
-  const v = $("#vplayer"); v.pause(); v.removeAttribute("src"); v.load();
+  const v = $("#vplayer");
+  if(vItem){
+    saveProgress(vItem, "movies", v);
+    vItem = null; v.dataset.item = "";
+    const sys = SYSTEMS.find(s=>s.id==="movies");
+    if(libraries.movies) renderLibrary(sys);
+    renderContinue();
+  }
+  if(!$("#vmodal").classList.contains("on")) return;
+  v.pause(); v.removeAttribute("src"); v.load();
   if(vURL){ URL.revokeObjectURL(vURL); vURL=null; }
   $("#vmodal").classList.remove("on");
+  // hand focus back to the tile that was opened (it has just been redrawn)
+  const back = vReturn && vReturn.isConnected ? vReturn
+             : vReturn && vReturn.dataset && vReturn.dataset.i !== undefined
+               ? $(`.page.active .tile[data-sys="${vReturn.dataset.sys}"][data-i="${vReturn.dataset.i}"]`) : null;
+  if(back) back.focus({preventScroll:true});
+  vReturn = null;
 }
+// Save the spot every few seconds and whenever playback stops, so a closed
+// tab, a flat battery or a switched-off TV still resumes where it was.
+(function(){
+  const v = $("#vplayer");
+  v.addEventListener("timeupdate", ()=>{
+    if(vItem && Date.now()-vSaved > 5000){ vSaved = Date.now(); saveProgress(vItem, "movies", v); }
+  });
+  v.addEventListener("pause", ()=>{ if(vItem) saveProgress(vItem, "movies", v); });
+  v.addEventListener("ended", ()=>{
+    if(!vItem) return;
+    saveProgress(vItem, "movies", v);
+    const next = nextInFolder(vItem);
+    if(next){ toast("Up next: "+baseName(next.name)); openVideo(next); }
+  });
+  addEventListener("pagehide", ()=>{ if(vItem) saveProgress(vItem, "movies", v); });
+})();
 $("#vclose").addEventListener("click", closeVideo);
 $("#vmodal").addEventListener("click", e=>{ if(e.target.id==="vmodal") closeVideo(); });
 addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeVideo(); } });
@@ -1041,20 +1398,33 @@ addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeVideo(); } });
    ============================================================ */
 const audio = $("#aplayer");
 let queueSys = null, queueI = -1, aURL = null;
+let aItem = null, aSaved = 0;
+const saveAudio = ()=>{ if(aItem && audio.duration >= LONG_AUDIO && saveProgress(aItem, queueSys, audio)) renderContinue(); };
 let actx = null, analyser = null, vizRAF = null;
 
 async function playTrack(sysId, i){
   const it = libraries[sysId][i];
   const src = await mediaSrc(it);
   if(!src){ toast("Couldn't read that track"); return; }
+  saveAudio();                                   // remember the one we're leaving
   queueSys = sysId; queueI = i;
   if(aURL) URL.revokeObjectURL(aURL);
   aURL = src.revoke ? src.url : null;
+  aItem = it; audio.dataset.item = it.url || "";
   audio.src = src.url;
+  resumeInto(it, audio);
   audio.play().catch(()=>{});
   $("#dTitle").textContent = baseName(it.name);
   $("#dSub").textContent = it.path;
   $("#dock").classList.add("on");
+  // lock-screen / headset / TV-remote media buttons
+  if("mediaSession" in navigator){
+    try{
+      navigator.mediaSession.metadata = new MediaMetadata({ title: baseName(it.name), album: dirOf(it).split("/").join(" · "), artist: CONFIG.hubName });
+      navigator.mediaSession.setActionHandler("previoustrack", ()=>step(-1));
+      navigator.mediaSession.setActionHandler("nexttrack", ()=>step(1));
+    }catch(e){}
+  }
   markPlaying();
   initViz();
 }
@@ -1071,7 +1441,9 @@ function step(dir){
 $("#dNext").addEventListener("click", ()=>step(1));
 $("#dPrev").addEventListener("click", ()=>step(-1));
 $("#dPlay").addEventListener("click", ()=>{ if(audio.paused) audio.play(); else audio.pause(); });
-audio.addEventListener("ended", ()=>step(1));
+audio.addEventListener("ended", ()=>{ saveAudio(); step(1); });
+audio.addEventListener("pause", saveAudio);
+addEventListener("pagehide", saveAudio);
 audio.addEventListener("play",  ()=>{ $("#dPlayIco").innerHTML='<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" stroke="none"/>'; });
 audio.addEventListener("pause", ()=>{ $("#dPlayIco").innerHTML='<path d="M8 5v14l11-7L8 5Z" fill="currentColor" stroke="none"/>'; });
 
@@ -1079,6 +1451,7 @@ audio.addEventListener("timeupdate", ()=>{
   $("#dCur").textContent = fmtTime(audio.currentTime);
   $("#dDur").textContent = fmtTime(audio.duration);
   if(audio.duration) $("#dSeek").value = audio.currentTime/audio.duration*1000;
+  if(Date.now()-aSaved > 5000){ aSaved = Date.now(); saveAudio(); }
 });
 $("#dSeek").addEventListener("input", e=>{
   if(audio.duration) audio.currentTime = e.target.value/1000*audio.duration;
@@ -1120,20 +1493,108 @@ function initViz(){
 /* ============================================================
    SETTINGS
    ============================================================ */
-$("#setAccent").addEventListener("input", e=>{
-  const c = e.target.value;
+function applyAccent(c){
+  if(!/^#[0-9a-f]{6}$/i.test(c||"")) return;
   document.documentElement.style.setProperty("--accent", c);
   const r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16);
   document.documentElement.style.setProperty("--accent-soft", `rgba(${r},${g},${b},.15)`);
-});
+  $("#setAccent").value = c;
+}
+function applyAmbient(on){
+  $("#setAmbient").classList.toggle("on", on);
+  $("#setAmbient").setAttribute("aria-checked", String(on));
+  $(".ambient").style.display = on ? "" : "none";
+}
+$("#setAmbient").setAttribute("role","switch");
+$("#setAmbient").setAttribute("tabindex","0");
+$("#setAmbient").setAttribute("aria-label","Ambient background");
+applyAccent(SETTINGS.accent);
+applyAmbient(SETTINGS.ambient !== false);
 $("#setName").value = CONFIG.hubName;
+
+$("#setAccent").addEventListener("input", e=>{ applyAccent(e.target.value); SETTINGS.accent = e.target.value; saveSettings(); });
 $("#setName").addEventListener("input", e=>{
-  const v = e.target.value.trim() || "STEVEN X";
-  $("#brandName").textContent = v.toUpperCase();
+  const v = (e.target.value.trim() || DEFAULT_NAME).toUpperCase();
+  $("#brandName").textContent = v;
+  CONFIG.hubName = v;
+  SETTINGS.name = e.target.value.trim(); saveSettings();
 });
 $("#setAmbient").addEventListener("click", function(){
-  this.classList.toggle("on");
-  $(".ambient").style.display = this.classList.contains("on") ? "" : "none";
+  const on = !this.classList.contains("on");
+  applyAmbient(on); SETTINGS.ambient = on; saveSettings();
+});
+$("#setReset").addEventListener("click", ()=>{
+  SETTINGS = {}; saveSettings();
+  document.documentElement.style.removeProperty("--accent");
+  document.documentElement.style.removeProperty("--accent-soft");
+  $("#setAccent").value = "#5cb872";
+  applyAmbient(true);
+  CONFIG.hubName = DEFAULT_NAME; $("#setName").value = DEFAULT_NAME; $("#brandName").textContent = DEFAULT_NAME;
+  toast("Appearance reset");
+});
+
+/* ============================================================
+   KEYBOARD + TV REMOTE
+   Arrow keys move between tiles, Enter/Space opens, "/" jumps to
+   search, Space pauses music, Esc closes the menu.
+   ============================================================ */
+function focusTargets(){
+  const modal = $("#vmodal").classList.contains("on");
+  const scope = modal ? $("#vmodal") : document.body;
+  return [...scope.querySelectorAll('button, a[href], input, [tabindex="0"]')].filter(el=>{
+    if(el.disabled || el.closest("[inert]") || el.closest("#boot")) return false;
+    const r = el.getBoundingClientRect();
+    if(!r.width || !r.height) return false;
+    return r.right > 0 && r.left < innerWidth;      // skip anything parked off to the side
+  });
+}
+function moveFocus(key){
+  const cur = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+  const list = focusTargets();
+  if(!cur || !list.includes(cur)){
+    const first = $(".page.active [tabindex='0'], .page.active a[href], .page.active button") || $(".nav-item.active");
+    if(first){ first.focus(); return true; }
+    return false;
+  }
+  const a = cur.getBoundingClientRect(), ax = a.left+a.width/2, ay = a.top+a.height/2;
+  const horiz = key==="ArrowLeft" || key==="ArrowRight", sign = (key==="ArrowRight"||key==="ArrowDown") ? 1 : -1;
+  let best = null, bestScore = Infinity;
+  for(const el of list){
+    if(el === cur) continue;
+    const r = el.getBoundingClientRect(), x = r.left+r.width/2, y = r.top+r.height/2;
+    const along = horiz ? (x-ax)*sign : (y-ay)*sign;
+    if(along < 4) continue;
+    // must actually lie in that direction: overlap on the other axis, or close to it
+    const gap = horiz ? Math.max(0, Math.max(r.top, a.top) - Math.min(r.bottom, a.bottom))
+                      : Math.max(0, Math.max(r.left, a.left) - Math.min(r.right, a.right));
+    const score = along + gap*4 + Math.abs(horiz ? y-ay : x-ax)*0.3;
+    if(score < bestScore){ bestScore = score; best = el; }
+  }
+  if(!best) return false;
+  best.focus({preventScroll:true});
+  best.scrollIntoView({ block:"nearest", inline:"nearest", behavior:"smooth" });
+  return true;
+}
+addEventListener("keydown", e=>{
+  if(!bootDone || e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target, tag = t.tagName;
+  const typing = (tag==="INPUT" && !["range","color","checkbox"].includes(t.type)) || tag==="TEXTAREA" || t.isContentEditable;
+  if(e.key==="Escape"){ closeMenu(); if(typing) t.blur(); return; }
+  if(typing){ if(e.key==="ArrowDown"){ t.blur(); if(moveFocus(e.key)) e.preventDefault(); } return; }
+  if(e.key==="Enter" || e.key===" "){
+    if(t.getAttribute && (t.getAttribute("role")==="button" || t.getAttribute("role")==="switch") && tag!=="BUTTON" && tag!=="A"){
+      e.preventDefault(); t.click(); return;
+    }
+    if(e.key===" " && (t===document.body || t===document.documentElement) && $("#dock").classList.contains("on")){
+      e.preventDefault(); if(audio.paused) audio.play(); else audio.pause();
+    }
+    return;
+  }
+  if(e.key==="/"){ e.preventDefault(); $("#searchBox").focus(); return; }
+  if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)){
+    if(tag==="VIDEO" || tag==="AUDIO" || tag==="SELECT" || (tag==="INPUT" && t.type==="range" && (e.key==="ArrowLeft"||e.key==="ArrowRight"))) return;
+    if(moveFocus(e.key)) e.preventDefault();
+  }
 });
 </script>
 </body>

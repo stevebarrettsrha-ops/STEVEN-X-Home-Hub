@@ -89,6 +89,57 @@ restarts them if they crash, and stops everything together when you press
 
 Updating apps never touches the media you dropped into them.
 
+Inside `music/` and `movies/`, **sub-folders become groups** — one block per
+album, series or season (`music/Album Name/…`, `movies/Series/Season 1/…`),
+sorted so *Episode 2* comes before *Episode 10*. Files left at the top level
+are listed first.
+
+## Pick up where you left off
+
+Close a film part-way and the hub remembers the spot. It shows on the Home page
+under **Continue Watching** and resumes from there next time; the same goes for
+long recordings (20 minutes or more — teachings, audiobooks). Press the **×**
+on a card to forget it. Positions are remembered **per device**, in that
+device's browser.
+
+## Getting around
+
+- **Phones** — the menu button (top left) slides the full menu in; swipe the
+  banner on Home to change slides.
+- **TV remote or keyboard** — arrow keys move between tiles, **Enter** opens,
+  **Esc** closes a film, **/** jumps to search, **Space** pauses the music.
+- **Search** — on Home it looks through the apps *and* inside every folder
+  library; on a library page it filters that library.
+- **Back button** — steps back through the hub's pages instead of leaving it.
+- **Next episode** — when a video in a folder ends, the next one starts.
+- **New files** — press the refresh button beside a library's item count to
+  pick up files you just dropped in, without reloading.
+- The startup animation plays once per visit; after that the hub opens straight
+  away. Accent colour, hub name and the ambient background (Settings) are
+  remembered on each device.
+
+## Put it on your home screen
+
+Open the hub on a phone, tablet or TV browser and choose **Add to Home Screen**
+(iPhone/iPad: Share → Add to Home Screen; Android: ⋮ menu → Add to Home screen).
+It gets the STEVEN X plaque as its icon. On iPhone/iPad it opens full-screen
+like an app; Android opens it in the browser, because Chrome only gives the
+full "install" treatment to `https://` sites.
+
+## Lock it with a PIN (optional)
+
+For when guests are on your Wi‑Fi. Create a file called **`pin.txt`** next to
+`server.js` containing just your PIN (for example `2468`), then restart the hub.
+
+- Each device types the PIN once and is remembered for 30 days.
+- The server computer itself is never asked.
+- Five wrong tries and that device has to wait (30 seconds, doubling each time).
+- Change the PIN and every device is asked again. Delete `pin.txt` and restart
+  to switch the lock off.
+- **Limit:** REEL, ARCADE and PACKR run on their own ports, so the PIN does not
+  cover them — it protects the hub page, the six folder libraries and the apps
+  hosted at `/apps/…`.
+
 ## Good to know
 
 - **Zero dependencies** — the hub, the downloader and both big apps use only
