@@ -19,6 +19,7 @@ const http = require("http");
 const fs   = require("fs");
 const path = require("path");
 const os   = require("os");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
@@ -72,11 +73,20 @@ const MIME = {
   ".m4a":"audio/mp4", ".flac":"audio/flac", ".aac":"audio/aac", ".opus":"audio/ogg",
   ".jpg":"image/jpeg", ".jpeg":"image/jpeg", ".png":"image/png",
   ".webp":"image/webp", ".gif":"image/gif", ".ico":"image/x-icon",
+  ".webmanifest":"application/manifest+json",
   ".wasm":"application/wasm", ".zip":"application/zip",
   ".ttf":"font/ttf", ".otf":"font/otf", ".woff":"font/woff", ".woff2":"font/woff2",
   ".xml":"application/xml", ".data":"application/octet-stream",
   ".mem":"application/octet-stream", ".map":"application/json",
 };
+// Files in the hub folder that browsers may fetch directly. Add a name here if
+// the hub pages ever need another file (an icon, a stylesheet …).
+const HUB_FILES = new Set(["index.html", "launch.html", "manifest.webmanifest",
+                           "icon-192.png", "icon-512.png", "apple-touch-icon.png"]);
+// The home-screen icon + manifest stay reachable even when the PIN lock is on,
+// so "Add to Home Screen" works (they contain nothing private).
+const PUBLIC_FILES = new Set(["manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"]);
+
 const mimeOf = p => MIME[path.extname(p).toLowerCase()] || "application/octet-stream";
 const extOf  = n => (n.includes(".") ? n.split(".").pop().toLowerCase() : "");
 
@@ -118,7 +128,19 @@ function serveFile(req, res, full) {
     res.writeHead(404); return res.end("Not found");
   }
   const type = mimeOf(full);
-  const range = req.headers.range;
+  // Revalidate-on-use caching: browsers keep their copy and just ask "changed?"
+  // — an unchanged file costs a tiny 304 instead of a full re-download, and an
+  // updated file (new movie, refreshed app) is picked up immediately.
+  const etag = '"' + stat.size.toString(16) + "-" + Math.floor(stat.mtimeMs).toString(16) + '"';
+  const cache = { "ETag": etag, "Last-Modified": stat.mtime.toUTCString(), "Cache-Control": "no-cache" };
+  const inm = req.headers["if-none-match"];
+  const ims = req.headers["if-modified-since"];
+  const fresh = inm ? inm.split(",").some(t => t.trim().replace(/^W\//, "") === etag)
+                    : (ims ? Math.floor(stat.mtimeMs / 1000) * 1000 <= Date.parse(ims) : false);
+  if (fresh) { res.writeHead(304, cache); return res.end(); }
+  // A Range request tied to an older copy (If-Range) gets the whole new file.
+  const ifRange = req.headers["if-range"];
+  const range = (ifRange && ifRange !== etag && ifRange !== cache["Last-Modified"]) ? null : req.headers.range;
   if (range) {
     const m = /bytes=(\d*)-(\d*)/.exec(range) || [];
     let start = m[1] ? parseInt(m[1], 10) : 0;
@@ -127,6 +149,7 @@ function serveFile(req, res, full) {
     if (isNaN(end) || end >= stat.size) end = stat.size - 1;
     if (start > end) { res.writeHead(416, { "Content-Range": `bytes */${stat.size}` }); return res.end(); }
     res.writeHead(206, {
+      ...cache,
       "Content-Range": `bytes ${start}-${end}/${stat.size}`,
       "Accept-Ranges": "bytes",
       "Content-Length": end - start + 1,
@@ -134,14 +157,24 @@ function serveFile(req, res, full) {
     });
     fs.createReadStream(full, { start, end }).on("error", () => res.end()).pipe(res);
   } else {
-    res.writeHead(200, { "Content-Length": stat.size, "Content-Type": type, "Accept-Ranges": "bytes" });
+    res.writeHead(200, { ...cache, "Content-Length": stat.size, "Content-Type": type, "Accept-Ranges": "bytes" });
     fs.createReadStream(full).on("error", () => res.end()).pipe(res);
   }
 }
 
-// Resolve a request path safely inside `base` (blocks ../ traversal).
+// decodeURIComponent throws on malformed input like "%zz" — never let a bad
+// link take the server down. Returns null instead.
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch (e) { return null; }
+}
+
+// Resolve a request path safely inside `base` (blocks ../ traversal, and any
+// hidden file or folder such as .git or .env). Returns null if not allowed.
 function safeResolve(base, relPath) {
-  const decoded = decodeURIComponent(relPath).replace(/\\/g, "/");
+  let decoded = safeDecode(relPath);
+  if (decoded === null || decoded.includes("\0")) return null;
+  decoded = decoded.replace(/\\/g, "/");
+  if (decoded.split("/").some(seg => seg.startsWith(".") && seg !== ".")) return null;
   const full = path.normalize(path.join(base, decoded));
   if (full !== base && !full.startsWith(base + path.sep)) return null;
   return full;
@@ -227,9 +260,180 @@ function requestIsLocal(req) {
   return false;
 }
 
+/* ============================================================================
+   OPTIONAL PIN LOCK — for when guests are on your Wi-Fi.
+   Off by default. Turn it on by putting a PIN in a file called  pin.txt  next
+   to server.js (or by starting with HUB_PIN=1234). Each device then types the
+   PIN once and is remembered for 30 days; the server computer itself is never
+   asked. Delete pin.txt (and restart) to turn the lock off again.
+   ============================================================================ */
+let PIN = (process.env.HUB_PIN || "").trim();
+if (!PIN) {
+  try { PIN = fs.readFileSync(path.join(ROOT, "pin.txt"), "utf8").split(/\r?\n/)[0].trim(); } catch (e) {}
+}
+const PIN_COOKIE = "stevenx_hub";
+const PIN_DAYS   = 30;
+// What a remembered device carries. It is derived from the PIN, so it survives
+// restarts of the hub, and changing the PIN signs every device out.
+const PIN_TOKEN  = PIN ? crypto.createHmac("sha256", PIN).update("stevenx-home-hub-session").digest("hex") : "";
+const sameText   = (a, b) => {
+  const x = crypto.createHash("sha256").update(String(a)).digest();
+  const y = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
+};
+
+function hasPinCookie(req) {
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i !== -1 && part.slice(0, i).trim() === PIN_COOKIE) return sameText(part.slice(i + 1).trim(), PIN_TOKEN);
+  }
+  return false;
+}
+
+// Wrong-PIN guard: 5 free tries per device, then a wait that doubles each time
+// (30s, 1m, 2m … up to 15m), so a 4-digit PIN can't simply be guessed through.
+const pinFails = new Map();   // ip -> { n, until }
+function pinWait(ip) {
+  const f = pinFails.get(ip);
+  return f && f.until > Date.now() ? Math.ceil((f.until - Date.now()) / 1000) : 0;
+}
+function pinFailed(ip) {
+  if (pinFails.size > 2000) pinFails.clear();
+  const f = pinFails.get(ip) || { n: 0, until: 0 };
+  f.n++;
+  if (f.n >= 5) f.until = Date.now() + Math.min(900, 30 * 2 ** (f.n - 5)) * 1000;
+  pinFails.set(ip, f);
+}
+
+function handleUnlock(req, res) {
+  const ip = req.socket.remoteAddress || "";
+  const json = (code, obj) => {
+    res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(obj));
+  };
+  if (req.method !== "POST") return json(405, { ok: false });
+  const wait = pinWait(ip);
+  if (wait) return json(429, { ok: false, wait });
+  let body = "", tooBig = false;
+  req.on("data", chunk => {
+    if (tooBig) return;
+    body += chunk;
+    if (body.length > 2048) { tooBig = true; json(413, { ok: false }); req.destroy(); }
+  });
+  req.on("end", () => {
+    if (tooBig) return;
+    let pin = "";
+    try { pin = String((JSON.parse(body) || {}).pin || "").trim(); } catch (e) {}
+    if (pin && sameText(pin, PIN)) {
+      pinFails.delete(ip);
+      res.writeHead(200, {
+        "Content-Type": "application/json", "Cache-Control": "no-store",
+        "Set-Cookie": PIN_COOKIE + "=" + PIN_TOKEN + "; Path=/; Max-Age=" + PIN_DAYS * 86400 + "; HttpOnly; SameSite=Lax",
+      });
+      return res.end(JSON.stringify({ ok: true }));
+    }
+    pinFailed(ip);
+    json(401, { ok: false, wait: pinWait(ip) });
+  });
+}
+
+const LOCK_PAGE = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#060b15">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>STEVEN X — Home Hub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;background:#060b15;color:#e9eefb;
+  display:grid;place-items:center;padding:24px}
+form{width:100%;max-width:340px;background:#101a2d;border:1px solid rgba(255,255,255,.07);border-radius:16px;
+  padding:30px 26px;text-align:center;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+img{width:96px;height:96px;border-radius:22px;margin-bottom:16px}
+h1{font-size:15px;letter-spacing:.3em;font-weight:800}
+p{font-size:13px;color:#8ea3c4;margin:8px 0 20px}
+input{width:100%;font:inherit;font-size:26px;letter-spacing:.4em;text-align:center;padding:12px;border-radius:12px;
+  border:1px solid rgba(255,255,255,.14);background:#060b15;color:#e9eefb}
+input:focus{outline:2px solid #5cb872;outline-offset:2px}
+button{width:100%;margin-top:14px;font:inherit;font-weight:700;padding:13px;border:0;border-radius:12px;
+  background:#5cb872;color:#07160c;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#msg{min-height:18px;margin-top:14px;font-size:12.5px;color:#ff8f8f}
+</style></head><body>
+<form id="f" autocomplete="off">
+  <img src="/icon-192.png" alt="">
+  <h1>STEVEN X</h1>
+  <p>Enter the house PIN to open the Home Hub.</p>
+  <input id="pin" type="password" inputmode="numeric" maxlength="32" aria-label="PIN" autofocus>
+  <button id="go">Unlock</button>
+  <div id="msg" role="alert"></div>
+</form>
+<script>
+const f = document.getElementById("f"), pin = document.getElementById("pin"),
+      go = document.getElementById("go"), msg = document.getElementById("msg");
+let timer = null;
+function hold(secs){
+  clearInterval(timer);
+  go.disabled = true;
+  const tick = () => {
+    if (secs <= 0) { clearInterval(timer); go.disabled = false; msg.textContent = ""; return; }
+    msg.textContent = "Too many wrong tries — wait " + secs + "s";
+    secs--;
+  };
+  tick(); timer = setInterval(tick, 1000);
+}
+f.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (go.disabled || !pin.value) return;
+  go.disabled = true; msg.textContent = "";
+  try {
+    const r = await fetch("/api/unlock", { method:"POST", headers:{ "Content-Type":"application/json" },
+                                           body: JSON.stringify({ pin: pin.value }) });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) return location.reload();
+    pin.value = ""; pin.focus();
+    if (j.wait) return hold(j.wait);
+    msg.textContent = "That PIN isn't right — try again";
+  } catch (err) { msg.textContent = "Couldn't reach the hub — check your Wi-Fi"; }
+  go.disabled = false;
+});
+</script>
+</body></html>`;
+
+// Last line of defence: whatever goes wrong inside one request, answer that
+// request with an error and keep the hub (and every app) running.
 const server = http.createServer((req, res) => {
+  try { return handleRequest(req, res); }
+  catch (e) {
+    console.error("  request failed: " + req.url + " — " + (e && e.message ? e.message : e));
+    try {
+      if (!res.headersSent) res.writeHead(500);
+      res.end("Server error");
+    } catch (e2) {}
+  }
+});
+
+function handleRequest(req, res) {
   let pathname = "/";
   try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
+
+  // ---- PIN lock (only when a PIN is set) -------------------------------------
+  if (PIN) {
+    if (pathname === "/api/unlock") return handleUnlock(req, res);
+    const open = PUBLIC_FILES.has(pathname.slice(1)) || requestIsLocal(req) || hasPinCookie(req);
+    if (!open) {
+      const wantsPage = /text\/html/.test(req.headers.accept || "") && (req.method === "GET" || req.method === "HEAD");
+      if (wantsPage) {
+        res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(req.method === "HEAD" ? "" : LOCK_PAGE);
+      }
+      res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return res.end(JSON.stringify({ error: "locked" }));
+    }
+  }
 
   // ---- health check --------------------------------------------------------
   if (pathname === "/api/health") {
@@ -281,7 +485,7 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith("/apps/")) {
     const rest  = pathname.slice("/apps/".length);
     const slash = rest.indexOf("/");
-    const id    = decodeURIComponent(slash === -1 ? rest : rest.slice(0, slash));
+    const id    = safeDecode(slash === -1 ? rest : rest.slice(0, slash));
     const app   = APPS.find(a => a.id === id);
     if (!app || app.type !== "static") { res.writeHead(404); return res.end("Not found"); }
     if (slash === -1) { res.writeHead(302, { Location: "/apps/" + encodeURIComponent(id) + "/" }); return res.end(); }
@@ -294,7 +498,7 @@ const server = http.createServer((req, res) => {
   // ---- library listing -----------------------------------------------------
   if (pathname === "/api/library") {
     const sys = new URL(req.url, "http://x").searchParams.get("sys") || "";
-    const exts = SYSTEMS[sys];
+    const exts = Object.prototype.hasOwnProperty.call(SYSTEMS, sys) ? SYSTEMS[sys] : null;
     if (!exts) { res.writeHead(400, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "unknown system" })); }
     const items = walk(sys, path.join(ROOT, sys), "", exts, [], 0)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -306,23 +510,23 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith("/media/")) {
     const rest = pathname.slice("/media/".length);
     const slash = rest.indexOf("/");
-    const sys = decodeURIComponent(slash === -1 ? rest : rest.slice(0, slash));
-    if (!SYSTEMS[sys]) { res.writeHead(404); return res.end("Not found"); }
+    const sys = safeDecode(slash === -1 ? rest : rest.slice(0, slash));
+    if (!sys || !Object.prototype.hasOwnProperty.call(SYSTEMS, sys)) { res.writeHead(404); return res.end("Not found"); }
     const base = path.join(ROOT, sys);
     const full = safeResolve(base, slash === -1 ? "" : rest.slice(slash + 1));
     if (!full) { res.writeHead(403); return res.end("Forbidden"); }
     return serveFile(req, res, full);
   }
 
-  // ---- the hub + any other static file next to it --------------------------
+  // ---- the hub itself -------------------------------------------------------
+  // Only the pages listed in HUB_FILES are served from the hub folder. The
+  // server's own code, apps.json, the launchers and .git are never handed out;
+  // libraries go through /media/ and apps through /apps/ above.
   if (pathname === "/") return serveFile(req, res, path.join(ROOT, "index.html"));
-  const full = safeResolve(ROOT, pathname.replace(/^\/+/, ""));
-  if (!full) { res.writeHead(403); return res.end("Forbidden"); }
-  // The apps/ tree is only reachable through the /apps/ route above (which
-  // limits it to static apps) — never through this generic fallback.
-  if (full === APPS_DIR || full.startsWith(APPS_DIR + path.sep)) { res.writeHead(404); return res.end("Not found"); }
-  return serveFile(req, res, full);
-});
+  const name = safeDecode(pathname.slice(1));
+  if (name && HUB_FILES.has(name)) return serveFile(req, res, path.join(ROOT, name));
+  res.writeHead(404); return res.end("Not found");
+}
 
 server.listen(PORT, () => {
   const nets = os.networkInterfaces();
@@ -368,6 +572,13 @@ server.listen(PORT, () => {
     console.log("");
   }
 
+  if (PIN) {
+    console.log("   PIN lock is ON — other devices type the PIN once (remembered " + PIN_DAYS + " days).");
+    if (PIN.length < 4) console.log("   (That PIN is very short — 4 or more characters is safer.)");
+    const own = APPS.filter(a => a.type === "node" && appInstalled(a));
+    if (own.length) console.log("   Note: " + own.map(a => a.name).join(", ") + " run on their own ports and are not behind the PIN.");
+    console.log("");
+  }
   console.log("   Leave this window OPEN while anyone is using the hub.");
   console.log("   Press Ctrl+C to stop everything.");
   console.log("");

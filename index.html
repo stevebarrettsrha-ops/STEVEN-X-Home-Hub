@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>STEVEN X — Home Hub</title>
+<!-- Installable: "Add to Home Screen" on phones, tablets and TV browsers -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#060b15">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STEVEN X">
 <style>
 /* ============================================================
    STEVEN X — HOME HUB — a fully-offline home entertainment hub
@@ -241,6 +250,17 @@ input{font-family:inherit}
 .tile .meta small{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
 
 /* ---------- track list (music) ---------- */
+/* folder groups (albums, series) inside a library */
+.lib-group{margin-bottom:26px}
+.lib-group .cat-head h3{white-space:normal;overflow-wrap:anywhere}
+.lib-group .cat-head span{flex:1}
+/* resume progress + continue-watching row */
+.tile .cover .prog{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(0,0,0,.55)}
+.tile .cover .prog i{display:block;height:100%;background:var(--accent)}
+.tile .forget{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.6);
+  color:#fff;font-size:16px;line-height:1;display:grid;place-items:center;opacity:.75}
+.tile .forget:hover,.tile .forget:focus-visible{opacity:1;background:rgba(0,0,0,.85)}
+.track .t-left{font-size:10.5px;color:var(--accent);flex:none;margin-right:10px}
 .tracks{display:flex;flex-direction:column;gap:4px}
 .track{
   display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:11px;
@@ -462,6 +482,8 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-ra
           <button class="hero-nav next" id="heroNext"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
           <div class="hero-dots" id="heroDots"></div>
         </div>
+        <div class="section-head" id="contHead" style="display:none"><h2>Continue Watching</h2><div class="rule"></div><span class="count" id="contCount"></span></div>
+        <div class="tile-grid" id="contGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))"></div>
         <div class="section-head" id="appsHead" style="display:none"><h2>Full Apps</h2><div class="rule"></div><span class="count" id="appsCount"></span></div>
         <div class="app-cats" id="appsGrid" style="display:none"></div>
         <div class="section-head"><h2>Folder Libraries</h2><div class="rule"></div><span class="count">6 installed</span></div>
@@ -634,6 +656,8 @@ const hueOf = str => { let h=0; for (const c of str) h=(h*31+c.charCodeAt(0))>>>
 const fmtTime = s => { if(!isFinite(s)) return "0:00"; s=Math.floor(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
 const extOf = n => n.includes(".") ? n.split(".").pop().toLowerCase() : "";
 const baseName = n => n.replace(/\.[^.]+$/,"");
+// File names come straight off the disk — escape them before they go into HTML.
+const esc = v => String(v).replace(/[&<>"'`]/g, c => "&#"+c.charCodeAt(0)+";");
 let toastT;
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("on");
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),3200); }
@@ -817,7 +841,7 @@ async function loadFromServer(sys){
     if(!r.ok) return 0;
     const j = await r.json();
     if(!j.items || !j.items.length) return 0;
-    libraries[sys.id] = j.items.slice(0,600);   // {name, path, url, ext}
+    libraries[sys.id] = sortLibrary(j.items).slice(0,600);   // {name, path, url, ext}
     renderLibrary(sys);
     return libraries[sys.id].length;
   }catch(e){ return 0; }
@@ -829,6 +853,7 @@ async function autoLoadServer(){
   loadApps();
   let total = 0;
   for(const s of SYSTEMS) total += await loadFromServer(s);
+  renderContinue();
   if(total) toast(`Home server connected — ${total} item${total>1?"s":""} loaded across your libraries`);
 }
 
@@ -968,35 +993,151 @@ async function fileOf(item){
   return null;
 }
 
+// Folder of an item, relative to its library ("" for files at the top level).
+const dirOf = it => { const p = it.path || it.name; const k = p.lastIndexOf("/"); return k === -1 ? "" : p.slice(0,k); };
+const natural = new Intl.Collator(undefined, { numeric:true, sensitivity:"base" });
+// Top-level files first, then folder by folder; "Episode 2" sorts before "Episode 10".
+function sortLibrary(items){
+  return items.slice().sort((a,b)=> natural.compare(dirOf(a), dirOf(b)) || natural.compare(a.name, b.name));
+}
+
+function trackRow(sys, it, i, n){
+  const p = progressOf(it);
+  return `
+      <div class="track" data-search="${esc((it.path||it.name).toLowerCase())}" data-i="${i}" id="trk-${sys.id}-${i}">
+        <span class="num">${n}</span>
+        <span class="eq"><i></i><i></i><i></i></span>
+        <div class="t-info"><b>${esc(baseName(it.name))}</b><small>${esc(it.path)}</small></div>
+        ${p ? `<span class="t-left">${esc(leftText(p))}</span>` : ""}
+        <span class="t-ext">${esc(extOf(it.name))}</span>
+      </div>`;
+}
+function tileCard(sys, it, i, wide, extra){
+  const h = hueOf(it.name), p = progressOf(it);
+  return `
+        <div class="tile ${wide?"wide":""}" data-search="${esc((it.path||it.name).toLowerCase())}" data-i="${i}" data-sys="${sys.id}">
+          <div class="cover" style="background:linear-gradient(140deg,hsl(${h} 55% 22%),hsl(${(h+40)%360} 65% 40%))">
+            <span class="ini">${esc(baseName(it.name).slice(0,2).toUpperCase())}</span>
+            ${svgIcon(sys.icon)}
+            <div class="play"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg></span></div>
+            ${p ? `<div class="prog"><i style="width:${Math.round(p.t/p.d*100)}%"></i></div>` : ""}
+            ${extra||""}
+          </div>
+          <div class="meta"><b title="${esc(it.name)}">${esc(baseName(it.name))}</b><small>${esc(p ? leftText(p) : extOf(it.name))}</small></div>
+        </div>`;
+}
+
 function renderLibrary(sys){
   const box = $("#lib-"+sys.id), items = libraries[sys.id];
   $("#count-"+sys.id).textContent = items.length+" items";
-  if(sys.kind==="audio"){
-    box.innerHTML = `<div class="tracks">`+items.map((it,i)=>`
-      <div class="track" data-search="${it.name.toLowerCase()}" data-i="${i}" id="trk-${sys.id}-${i}">
-        <span class="num">${i+1}</span>
-        <span class="eq"><i></i><i></i><i></i></span>
-        <div class="t-info"><b>${baseName(it.name)}</b><small>${it.path}</small></div>
-        <span class="t-ext">${extOf(it.name)}</span>
-      </div>`).join("")+`</div>`;
-    box.querySelectorAll(".track").forEach(t=>t.addEventListener("click",()=>playTrack(sys.id,+t.dataset.i)));
-  } else {
-    const wide = sys.kind==="video";
-    box.innerHTML = `<div class="tile-grid" style="${wide?"grid-template-columns:repeat(auto-fill,minmax(210px,1fr))":""}">`
-      +items.map((it,i)=>{
-        const h = hueOf(it.name);
-        return `
-        <div class="tile ${wide?"wide":""}" data-search="${it.name.toLowerCase()}" data-i="${i}">
-          <div class="cover" style="background:linear-gradient(140deg,hsl(${h} 55% 22%),hsl(${(h+40)%360} 65% 40%))">
-            <span class="ini">${baseName(it.name).slice(0,2).toUpperCase()}</span>
-            ${svgIcon(sys.icon)}
-            <div class="play"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg></span></div>
-          </div>
-          <div class="meta"><b title="${it.name}">${baseName(it.name)}</b><small>${extOf(it.name)}</small></div>
-        </div>`;}).join("")+`</div>`;
-    box.querySelectorAll(".tile").forEach(t=>t.addEventListener("click",()=>openItem(sys,+t.dataset.i)));
+  const isAudio = sys.kind==="audio", wide = sys.kind==="video";
+  const gridStyle = wide ? "grid-template-columns:repeat(auto-fill,minmax(210px,1fr))" : "";
+  const wrap = rows => isAudio ? `<div class="tracks">${rows}</div>` : `<div class="tile-grid" style="${gridStyle}">${rows}</div>`;
+  const row  = (it,i,n) => isAudio ? trackRow(sys,it,i,n) : tileCard(sys,it,i,wide);
+
+  // Music and movies are grouped by the folder they sit in — one block per
+  // album / series / season. Libraries with no sub-folders stay a flat list.
+  const groups = [];
+  if(isAudio || wide){
+    items.forEach((it,i)=>{
+      const d = dirOf(it);
+      let g = groups[groups.length-1];
+      if(!g || g.dir !== d){ g = { dir:d, rows:[] }; groups.push(g); }
+      g.rows.push([it,i]);
+    });
   }
+  if(groups.length > 1 || (groups.length === 1 && groups[0].dir)){
+    const loose = isAudio ? "Singles" : "Movies";
+    const unit  = isAudio ? "track" : "video";
+    // Each group carries the names of everything inside it, so a search keeps
+    // the folder heading on screen while non-matching items hide.
+    box.innerHTML = groups.map(g=>`
+      <div class="lib-group" data-search="${esc(g.rows.map(([it])=>it.path||it.name).join(" ").toLowerCase())}">
+        <div class="cat-head"><h3>${esc(g.dir ? g.dir.split("/").join(" · ") : loose)}</h3><span></span><em>${g.rows.length} ${unit}${g.rows.length===1?"":"s"}</em></div>
+        ${wrap(g.rows.map(([it,i],n)=>row(it,i,n+1)).join(""))}
+      </div>`).join("");
+  } else {
+    box.innerHTML = wrap(items.map((it,i)=>row(it,i,i+1)).join(""));
+  }
+  if(isAudio) box.querySelectorAll(".track").forEach(t=>t.addEventListener("click",()=>playTrack(sys.id,+t.dataset.i)));
+  else      box.querySelectorAll(".tile").forEach(t=>t.addEventListener("click",()=>openItem(sys,+t.dataset.i)));
+  if(isAudio) markPlaying();
   applySearch($("#searchBox").value);
+}
+
+/* ============================================================
+   RESUME — remembers where each film (and any long recording)
+   was stopped, on this device, and offers it back on the Home
+   page under "Continue Watching".
+   ============================================================ */
+const PROGRESS_KEY  = "stevenx.progress.v1";
+const RESUME_MIN    = 30;         // don't bother remembering the first few seconds
+const RESUME_DONE   = 0.95;       // past this point it counts as finished
+const LONG_AUDIO    = 20 * 60;    // only audio this long (sermons, audiobooks) is remembered
+const KEEP_DAYS     = 120;
+let progress = {};
+try{ progress = JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; }catch(e){ progress = {}; }
+(function pruneProgress(){
+  const cutoff = Date.now() - KEEP_DAYS*864e5;
+  for(const k of Object.keys(progress)) if(!progress[k] || !(progress[k].at > cutoff)) delete progress[k];
+})();
+function storeProgress(){ try{ localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); }catch(e){} }
+function progressOf(it){ const p = it && it.url && progress[it.url]; return p && p.d > 0 ? p : null; }
+function leftText(p){
+  const m = Math.max(1, Math.round((p.d - p.t)/60));
+  return m >= 60 ? Math.floor(m/60)+"h "+(m%60)+"m left" : m+" min left";
+}
+// Record the position of a playing <video>/<audio>. Returns true if anything changed.
+function saveProgress(it, sysId, el){
+  if(!it || !it.url) return false;
+  const t = el.currentTime, d = el.duration;
+  if(!isFinite(d) || d <= 0) return false;
+  if(t < RESUME_MIN || t/d >= RESUME_DONE){
+    if(!progress[it.url]) return false;
+    delete progress[it.url];
+  } else {
+    progress[it.url] = { t:Math.floor(t), d:Math.floor(d), at:Date.now(), sys:sysId };
+  }
+  storeProgress();
+  return true;
+}
+// Jump a freshly-loaded player to its saved spot.
+function resumeInto(it, el){
+  const p = progressOf(it);
+  if(!p) return;
+  const seek = ()=>{
+    if(el.dataset.item !== it.url) return;          // user already moved on
+    try{ el.currentTime = Math.min(p.t, Math.max(0,(el.duration||p.d)-5)); }catch(e){}
+    toast("Resuming from "+fmtTime(p.t)+" — drag back to the start to watch from the beginning");
+  };
+  if(el.readyState >= 1) seek(); else el.addEventListener("loadedmetadata", seek, { once:true });
+}
+
+function renderContinue(){
+  const head = $("#contHead"), grid = $("#contGrid");
+  if(!head || !grid) return;
+  const rows = [];
+  for(const sys of SYSTEMS){
+    (libraries[sys.id]||[]).forEach((it,i)=>{ const p = progressOf(it); if(p) rows.push({ sys, it, i, p }); });
+  }
+  rows.sort((a,b)=>b.p.at-a.p.at);
+  const show = rows.slice(0,12);
+  head.style.display = grid.style.display = show.length ? "" : "none";
+  if(show.length) grid.style.display = "grid";
+  $("#contCount").textContent = show.length ? show.length+" in progress" : "";
+  grid.innerHTML = show.map(r=>tileCard(r.sys, r.it, r.i, true,
+    `<button class="forget" title="Remove from Continue Watching" aria-label="Remove from Continue Watching">&times;</button>`)).join("");
+  grid.querySelectorAll(".tile").forEach(t=>{
+    const sys = SYSTEMS.find(s=>s.id===t.dataset.sys), i = +t.dataset.i;
+    t.addEventListener("click", e=>{
+      if(e.target.closest(".forget")){
+        delete progress[libraries[sys.id][i].url]; storeProgress();
+        renderContinue(); renderLibrary(sys);
+        return;
+      }
+      if(sys.kind==="audio") playTrack(sys.id, i); else openItem(sys, i);
+    });
+  });
 }
 
 async function openItem(sys, i){
@@ -1016,22 +1157,44 @@ async function openItem(sys, i){
 
 /* ---------- video theatre ---------- */
 let vURL = null;   // holds a temporary object URL to revoke; null for server streams
+let vItem = null, vSaved = 0;
 async function openVideo(it){
   const v = $("#vplayer");
   const src = await mediaSrc(it);
   if(!src){ toast("Couldn't open that file"); return; }
   if(vURL) URL.revokeObjectURL(vURL);
   vURL = src.revoke ? src.url : null;
+  vItem = it; v.dataset.item = it.url || "";
   v.src = src.url;
   $("#vtitle").textContent = baseName(it.name);
   $("#vmodal").classList.add("on");
+  resumeInto(it, v);
   v.play().catch(()=>{});
 }
 function closeVideo(){
-  const v = $("#vplayer"); v.pause(); v.removeAttribute("src"); v.load();
+  const v = $("#vplayer");
+  if(vItem){
+    saveProgress(vItem, "movies", v);
+    vItem = null; v.dataset.item = "";
+    const sys = SYSTEMS.find(s=>s.id==="movies");
+    if(libraries.movies) renderLibrary(sys);
+    renderContinue();
+  }
+  v.pause(); v.removeAttribute("src"); v.load();
   if(vURL){ URL.revokeObjectURL(vURL); vURL=null; }
   $("#vmodal").classList.remove("on");
 }
+// Save the spot every few seconds and whenever playback stops, so a closed
+// tab, a flat battery or a switched-off TV still resumes where it was.
+(function(){
+  const v = $("#vplayer");
+  v.addEventListener("timeupdate", ()=>{
+    if(vItem && Date.now()-vSaved > 5000){ vSaved = Date.now(); saveProgress(vItem, "movies", v); }
+  });
+  v.addEventListener("pause", ()=>{ if(vItem) saveProgress(vItem, "movies", v); });
+  v.addEventListener("ended", ()=>{ if(vItem) saveProgress(vItem, "movies", v); });
+  addEventListener("pagehide", ()=>{ if(vItem) saveProgress(vItem, "movies", v); });
+})();
 $("#vclose").addEventListener("click", closeVideo);
 $("#vmodal").addEventListener("click", e=>{ if(e.target.id==="vmodal") closeVideo(); });
 addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeVideo(); } });
@@ -1041,16 +1204,21 @@ addEventListener("keydown", e=>{ if(e.key==="Escape"){ closeVideo(); } });
    ============================================================ */
 const audio = $("#aplayer");
 let queueSys = null, queueI = -1, aURL = null;
+let aItem = null, aSaved = 0;
+const saveAudio = ()=>{ if(aItem && audio.duration >= LONG_AUDIO && saveProgress(aItem, queueSys, audio)) renderContinue(); };
 let actx = null, analyser = null, vizRAF = null;
 
 async function playTrack(sysId, i){
   const it = libraries[sysId][i];
   const src = await mediaSrc(it);
   if(!src){ toast("Couldn't read that track"); return; }
+  saveAudio();                                   // remember the one we're leaving
   queueSys = sysId; queueI = i;
   if(aURL) URL.revokeObjectURL(aURL);
   aURL = src.revoke ? src.url : null;
+  aItem = it; audio.dataset.item = it.url || "";
   audio.src = src.url;
+  resumeInto(it, audio);
   audio.play().catch(()=>{});
   $("#dTitle").textContent = baseName(it.name);
   $("#dSub").textContent = it.path;
@@ -1071,7 +1239,9 @@ function step(dir){
 $("#dNext").addEventListener("click", ()=>step(1));
 $("#dPrev").addEventListener("click", ()=>step(-1));
 $("#dPlay").addEventListener("click", ()=>{ if(audio.paused) audio.play(); else audio.pause(); });
-audio.addEventListener("ended", ()=>step(1));
+audio.addEventListener("ended", ()=>{ saveAudio(); step(1); });
+audio.addEventListener("pause", saveAudio);
+addEventListener("pagehide", saveAudio);
 audio.addEventListener("play",  ()=>{ $("#dPlayIco").innerHTML='<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" stroke="none"/>'; });
 audio.addEventListener("pause", ()=>{ $("#dPlayIco").innerHTML='<path d="M8 5v14l11-7L8 5Z" fill="currentColor" stroke="none"/>'; });
 
@@ -1079,6 +1249,7 @@ audio.addEventListener("timeupdate", ()=>{
   $("#dCur").textContent = fmtTime(audio.currentTime);
   $("#dDur").textContent = fmtTime(audio.duration);
   if(audio.duration) $("#dSeek").value = audio.currentTime/audio.duration*1000;
+  if(Date.now()-aSaved > 5000){ aSaved = Date.now(); saveAudio(); }
 });
 $("#dSeek").addEventListener("input", e=>{
   if(audio.duration) audio.currentTime = e.target.value/1000*audio.duration;

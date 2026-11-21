@@ -12,6 +12,9 @@
 # Downloaded full apps (REEL, ARCADE, …) — fetched by get-apps.js, never committed
 /apps/
 
+# Your house PIN (optional lock) — never committed
+/pin.txt
+
 # Node / OS cruft
 node_modules/
 .DS_Store
