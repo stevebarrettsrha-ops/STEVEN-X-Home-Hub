@@ -127,7 +127,13 @@
       "fx": "tar",
       "icon": "blob",
       "desc": "Gish Reloaded, brought back from the Java phone era as an HTML5 game — 88 levels of sticky, slick and heavy tar physics.",
-      "bootLines": ["Warming the tar…", "Loading 88 levels…", "Getting sticky…", "Roll out."]
+      "bootLines": ["Warming the tar…", "Loading 88 levels…", "Getting sticky…", "Roll out."],
+      "pad": {
+        "help": "stick or D-pad: move · A: jump · X or RT: sticky · B or LT: slick · Y: attack · Start: pause",
+        "playingWhen": "Game.active && ![4, 5, 6].includes(Game.G.state)",
+        "buttons": { "0": "Space", "1": "KeyL", "2": "KeyK", "3": "Enter", "5": "Enter", "6": "KeyL", "7": "KeyK", "8": "Escape", "9": "Escape" },
+        "menuButtons": { "0": "Enter", "1": "Escape", "8": "Escape", "9": "Enter" }
+      }
     },
     {
       "id": "serpent",
@@ -143,7 +149,12 @@
       "fx": "serpent",
       "icon": "snake",
       "desc": "A beautifully rendered snake — ten levels from Spring to the Void, three kinds of prey, keyboard or swipe play.",
-      "bootLines": ["Shedding the old skin…", "Scattering the apples…", "Waking the rabbits…", "Slither."]
+      "bootLines": ["Shedding the old skin…", "Scattering the apples…", "Waking the rabbits…", "Slither."],
+      "pad": {
+        "help": "stick or D-pad: steer · A or Start: start, pause, retry",
+        "buttons": { "0": "Space", "1": "Escape", "9": "Space" },
+        "touchPad": true
+      }
     },
     {
       "id": "space-impact",
@@ -159,7 +170,11 @@
       "fx": "starfield",
       "icon": "rocket",
       "desc": "The classic side-scrolling shooter reforged — five worlds of enemies and bosses scrolling across the stars.",
-      "bootLines": ["Igniting the thrusters…", "Charging the cannons…", "Entering world 1…", "Engage."]
+      "bootLines": ["Igniting the thrusters…", "Charging the cannons…", "Entering world 1…", "Engage."],
+      "pad": {
+        "help": "stick or D-pad: fly · A or RT: fire · B: back · X: weapon · Y: boost · LB/RB: throttle · LT: autofire · Start: pause · Back: map · L3: camera · R3: dock",
+        "buttons": { "0": "Space", "1": "Escape", "2": "Digit1", "3": "Digit3", "4": "Digit8", "5": "Digit2", "6": "Digit7", "7": "Space", "8": "KeyM", "9": "KeyP", "10": "KeyC", "11": "Digit0" }
+      }
     },
     {
       "id": "voicescript",

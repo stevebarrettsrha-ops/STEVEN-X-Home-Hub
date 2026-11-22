@@ -83,7 +83,7 @@ const MIME = {
 };
 // Files in the hub folder that browsers may fetch directly. Add a name here if
 // the hub pages ever need another file (an icon, a stylesheet …).
-const HUB_FILES = new Set(["index.html", "launch.html", "manifest.webmanifest",
+const HUB_FILES = new Set(["index.html", "launch.html", "pad-bridge.js", "manifest.webmanifest",
                            "icon-192.png", "icon-512.png", "apple-touch-icon.png"]);
 // The home-screen icon + manifest stay reachable even when the PIN lock is on,
 // so "Add to Home Screen" works (they contain nothing private).
@@ -162,6 +162,35 @@ function serveFile(req, res, full) {
     res.writeHead(200, { ...cache, "Content-Length": stat.size, "Content-Type": type, "Accept-Ranges": "bytes" });
     fs.createReadStream(full).on("error", () => res.end()).pipe(res);
   }
+}
+
+// Games with a "pad" block in apps.json get the hub's controller + touch bridge
+// (pad-bridge.js) added to their pages as they are served. The game's files on
+// disk are never touched, so updating an app can't undo it. Returns false when
+// the file isn't a page, and the caller serves it the normal way.
+function servePageWithPad(req, res, full, app) {
+  let stat;
+  try {
+    stat = fs.statSync(full);
+    if (stat.isDirectory()) { full = path.join(full, "index.html"); stat = fs.statSync(full); }
+  } catch (e) { return false; }
+  if (!/\.html?$/i.test(full) || stat.size > 20 * 1024 * 1024) return false;
+  let html;
+  try { html = fs.readFileSync(full, "utf8"); } catch (e) { return false; }
+  const config = JSON.stringify(app.pad).replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/</g, "&lt;");
+  const tag = "<script src=\"/pad-bridge.js\" data-pad='" + config + "'></script>\n";
+  const at = html.search(/<\/head>/i);
+  html = at === -1 ? tag + html : html.slice(0, at) + tag + html.slice(at);
+  const body = Buffer.from(html, "utf8");
+  const etag = '"' + crypto.createHash("sha1").update(body).digest("hex").slice(0, 20) + '"';
+  const headers = { "ETag": etag, "Cache-Control": "no-cache", "Content-Type": "text/html; charset=utf-8" };
+  if ((req.headers["if-none-match"] || "").split(",").some(t => t.trim().replace(/^W\//, "") === etag)) {
+    res.writeHead(304, headers); res.end(); return true;
+  }
+  headers["Content-Length"] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === "HEAD" ? undefined : body);
+  return true;
 }
 
 // decodeURIComponent throws on malformed input like "%zz" — never let a bad
@@ -621,6 +650,7 @@ function handleRequest(req, res) {
     const base = path.join(APPS_DIR, app.id);
     const full = safeResolve(base, rest.slice(slash + 1));
     if (!full) { res.writeHead(403); return res.end("Forbidden"); }
+    if (app.pad && servePageWithPad(req, res, full, app)) return;
     return serveFile(req, res, full);
   }
 

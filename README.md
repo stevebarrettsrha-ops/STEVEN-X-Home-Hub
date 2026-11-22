@@ -118,6 +118,29 @@ device's browser.
   away. Accent colour, hub name and the ambient background (Settings) are
   remembered on each device.
 
+## Game controllers and touch
+
+**GISH, SERPENT and SPACE IMPACT** take a real controller (Xbox, PlayStation or
+Bluetooth) when played on a computer. Plug it in, open the game from the hub
+and press any button — a note shows the layout.
+
+| Game | Layout |
+|---|---|
+| **GISH** | Stick or D-pad move · **A** jump (select in menus) · **X** / **RT** sticky · **B** / **LT** slick (back in menus) · **Y** attack · **Start** pause |
+| **SERPENT** | Stick or D-pad steer · **A** / **Start** start, pause, retry |
+| **SPACE IMPACT** | Stick or D-pad fly · **A** / **RT** fire · **B** back · **X** weapon · **Y** boost · **LB** / **RB** throttle · **LT** autofire · **Start** pause · **Back** map · **L3** camera · **R3** dock |
+
+To change a layout, edit that game's `"pad"` block in `apps.json` (button
+numbers follow the standard layout: 0 = A, 1 = B, 2 = X, 3 = Y, 4/5 = LB/RB,
+6/7 = LT/RT, 8 = Back, 9 = Start) and restart the hub.
+
+On a phone or tablet, GISH and SPACE IMPACT use their own on-screen controls,
+and SERPENT gets an on-screen D-pad under the board as well as swipes.
+
+The hub adds this to the games as it serves them (`pad-bridge.js`); the games'
+own files are not changed, so it applies when they are opened through the hub.
+BERĔSHITH and THE VOYAGE have their own controller support built in.
+
 ## Put it on your home screen
 
 Open the hub on a phone, tablet or TV browser and choose **Add to Home Screen**
