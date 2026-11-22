@@ -7,6 +7,8 @@
      node get-apps.js            install anything that's missing
      node get-apps.js --update   also refresh apps that are already installed
      node get-apps.js reel       only the named app(s)
+     node get-apps.js --check    list which apps (and the hub) have updates waiting
+     node get-apps.js --hub      update the hub itself from its repository
 
    How it fetches:
      1. If git is installed  ->  shallow "git clone" (updates keep your media:
@@ -26,7 +28,7 @@ const http  = require("http");
 const https = require("https");
 const tls   = require("tls");
 const zlib  = require("zlib");
-const { spawnSync } = require("child_process");
+const { spawnSync, execFile } = require("child_process");
 
 const ROOT     = __dirname;
 const APPS_DIR = path.join(ROOT, "apps");
@@ -43,8 +45,9 @@ function hasGit() {
 }
 
 /* ---- HTTPS download (follows redirects, supports HTTPS_PROXY) --------------- */
-function fetchBuffer(url, redirects) {
+function fetchBuffer(url, redirects, extraHeaders) {
   redirects = redirects || 0;
+  extraHeaders = extraHeaders || {};
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error("Too many redirects"));
     const u = new URL(url);
@@ -53,7 +56,7 @@ function fetchBuffer(url, redirects) {
     const onResponse = res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return resolve(fetchBuffer(new URL(res.headers.location, url).href, redirects + 1));
+        return resolve(fetchBuffer(new URL(res.headers.location, url).href, redirects + 1, extraHeaders));
       }
       if (res.statusCode !== 200) {
         res.resume();
@@ -86,7 +89,7 @@ function fetchBuffer(url, redirects) {
         if (r.statusCode !== 200) return reject(new Error("Proxy CONNECT failed: HTTP " + r.statusCode));
         const req = https.request({
           host: u.hostname, path: u.pathname + u.search, method: "GET",
-          headers: { "User-Agent": "steven-x-home-hub", Host: u.hostname },
+          headers: Object.assign({ "User-Agent": "steven-x-home-hub", Host: u.hostname }, extraHeaders),
           createConnection: () => tls.connect({ socket, servername: u.hostname }),
         }, onResponse);
         req.on("error", reject);
@@ -95,7 +98,7 @@ function fetchBuffer(url, redirects) {
       connectReq.on("error", reject);
       connectReq.end();
     } else {
-      https.get(url, { headers: { "User-Agent": "steven-x-home-hub" } }, onResponse).on("error", reject);
+      https.get(url, { headers: Object.assign({ "User-Agent": "steven-x-home-hub" }, extraHeaders) }, onResponse).on("error", reject);
     }
   });
 }
@@ -160,6 +163,16 @@ function unzipInto(buf, destDir, stripTop) {
 // PORT environment variable so the hub can run it on its own port. Re-applied
 // safely after every update; a no-op once the line is already env-aware.
 function applyPatches(app, dir) {
+  // Small fixes listed in apps.json ("patches": [{ file, find, replace }]) —
+  // exact text swaps, re-applied safely after every update, skipped once done.
+  for (const fix of app.patches || []) {
+    const target = path.join(dir, fix.file);
+    let text;
+    try { text = fs.readFileSync(target, "utf8"); } catch (e) { continue; }
+    if (text.includes(fix.replace) || !text.includes(fix.find)) continue;
+    fs.writeFileSync(target, text.split(fix.find).join(fix.replace));
+    say("   · patched " + app.id + "/" + fix.file);
+  }
   if (app.id !== "reel") return;
   const file = path.join(dir, app.serverFile || "server.js");
   let src;
@@ -173,6 +186,77 @@ function applyPatches(app, dir) {
     fs.writeFileSync(file, patched);
     say("   · patched " + app.id + "/" + (app.serverFile || "server.js") + " to accept the hub's port");
   }
+}
+
+/* ---- versions: what is installed here vs. what the repository now holds ------ */
+// A "version" is the repository's latest commit id. Git checkouts know their
+// own; ZIP installs remember it in a small .hub-version file.
+const HUB_REPO_DEFAULT = "stevebarrettsrha-ops/STEVEN-X-Home-Hub";
+const QUIET_GIT = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: "0" });   // never stop to ask for a password
+
+function localVersion(dir) {
+  try {
+    if (fs.existsSync(path.join(dir, ".git"))) {
+      const r = spawnSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf8", env: QUIET_GIT });
+      if (r.status === 0) return r.stdout.trim();
+    }
+    return fs.readFileSync(path.join(dir, ".hub-version"), "utf8").trim() || null;
+  } catch (e) { return null; }
+}
+
+function remoteVersion(repo, useGit) {
+  if (useGit) {
+    return new Promise(resolve => {
+      execFile("git", ["ls-remote", "https://github.com/" + repo, "HEAD"], { env: QUIET_GIT, timeout: 25000 },
+        (err, out) => resolve(err ? null : (String(out).split(/\s+/)[0] || null)));
+    });
+  }
+  return fetchBuffer("https://api.github.com/repos/" + repo + "/commits/HEAD", 0, { Accept: "application/vnd.github.sha" })
+    .then(b => { const v = b.toString("utf8").trim(); return /^[0-9a-f]{40}$/.test(v) ? v : null; })
+    .catch(() => null);
+}
+
+async function rememberVersion(repo, dir) {
+  if (fs.existsSync(path.join(dir, ".git"))) return;
+  const v = await remoteVersion(repo, false);
+  if (v) { try { fs.writeFileSync(path.join(dir, ".hub-version"), v + "\n"); } catch (e) {} }
+}
+
+// --check: one line of JSON the hub's Settings page reads (also fine to run by hand).
+async function checkUpdates(manifest, apps) {
+  const useGit = hasGit();
+  const one = async (repo, dir, installed) => {
+    const local  = installed ? localVersion(dir) : null;
+    const remote = await remoteVersion(repo, useGit);
+    return { local, remote, update: installed && local && remote ? local !== remote : null };
+  };
+  const hubRepo = manifest.hubRepo || HUB_REPO_DEFAULT;
+  const out = { hub: Object.assign({ repo: hubRepo }, await one(hubRepo, ROOT, true)), apps: [] };
+  for (let i = 0; i < apps.length; i += 6) {                       // six at a time
+    out.apps.push(...await Promise.all(apps.slice(i, i + 6).map(async a => {
+      const dir = path.join(APPS_DIR, a.id), installed = isInstalled(dir);
+      return Object.assign({ id: a.id, name: a.name, installed }, await one(a.repo, dir, installed));
+    })));
+  }
+  return out;
+}
+
+// --hub: bring the hub's own files up to date. Your media, apps/ and pin.txt are
+// not part of the repository, so they are never touched.
+async function updateHub(manifest) {
+  const repo = manifest.hubRepo || HUB_REPO_DEFAULT;
+  if (fs.existsSync(path.join(ROOT, ".git")) && hasGit()) {
+    say("↻ HOME HUB       updating from " + repo + " …");
+    const r = spawnSync("git", ["-C", ROOT, "pull", "--ff-only"], { stdio: "inherit", env: QUIET_GIT });
+    if (r.status !== 0) throw new Error("git pull failed — if you changed hub files yourself, undo or commit those changes first");
+  } else {
+    say("↻ HOME HUB       downloading ZIP of " + repo + " …");
+    const buf = await fetchBuffer("https://codeload.github.com/" + repo + "/zip/HEAD");
+    const files = unzipInto(buf, ROOT, true);
+    say("   · unpacked " + files + " files");
+    await rememberVersion(repo, ROOT);
+  }
+  say("✔ HOME HUB       updated — restart the hub to use the new version");
 }
 
 /* ---- install / update one app ----------------------------------------------- */
@@ -195,18 +279,19 @@ async function installApp(app, useGit, update) {
   if (useGit) {
     if (installed && fs.existsSync(path.join(dir, ".git"))) {
       say("↻ " + app.name.padEnd(14) + " updating from " + app.repo + " …");
-      let r = spawnSync("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { stdio: "inherit" });
-      if (r.status === 0) r = spawnSync("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { stdio: "inherit" });
+      let r = spawnSync("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { stdio: "inherit", env: QUIET_GIT });
+      if (r.status === 0) r = spawnSync("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { stdio: "inherit", env: QUIET_GIT });
       if (r.status !== 0) throw new Error("git update failed for " + app.repo);
     } else if (!installed) {
       say("⇣ " + app.name.padEnd(14) + " cloning " + app.repo + " …");
-      const r = spawnSync("git", ["clone", "--depth", "1", url, dir], { stdio: "inherit" });
+      const r = spawnSync("git", ["clone", "--depth", "1", url, dir], { stdio: "inherit", env: QUIET_GIT });
       if (r.status !== 0) throw new Error("git clone failed for " + app.repo);
     } else {
       // Installed from ZIP earlier (no .git): refresh by unpacking over the top.
       say("↻ " + app.name.padEnd(14) + " refreshing from ZIP (your added files are kept)…");
       const buf = await fetchBuffer("https://codeload.github.com/" + app.repo + "/zip/HEAD");
       unzipInto(buf, dir, true);
+      await rememberVersion(app.repo, dir);
     }
   } else {
     say("⇣ " + app.name.padEnd(14) + " downloading ZIP of " + app.repo + " …");
@@ -214,6 +299,7 @@ async function installApp(app, useGit, update) {
     const buf = await fetchBuffer("https://codeload.github.com/" + app.repo + "/zip/HEAD");
     const files = unzipInto(buf, dir, true);
     say("   · unpacked " + files + " files");
+    await rememberVersion(app.repo, dir);
   }
 
   applyPatches(app, dir);
@@ -231,6 +317,20 @@ async function installApp(app, useGit, update) {
   catch (e) { console.error("\n  Could not read apps.json next to get-apps.js: " + e.message + "\n"); process.exit(1); }
 
   let apps = (manifest.apps || []).filter(a => a.enabled !== false);
+
+  if (argv.includes("--check")) {
+    const report = await checkUpdates(manifest, apps);
+    console.log("HUBJSON:" + JSON.stringify(report));
+    return;
+  }
+  if (argv.includes("--hub")) {
+    console.log("");
+    try { await updateHub(manifest); }
+    catch (e) { say("✘ HOME HUB       FAILED: " + e.message); process.exitCode = 1; }
+    console.log("");
+    if (!picked.length) return;
+  }
+
   if (picked.length) {
     apps = apps.filter(a => picked.includes(a.id));
     if (!apps.length) {

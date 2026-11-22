@@ -3,15 +3,44 @@
   "//2": "and server.js hosts or launches them from here. Set \"enabled\": false to",
   "//3": "keep an app installed but stop the hub from starting/showing it.",
   "//4": "Every app names a \"category\" below — the hub groups its tiles by these.",
-
+  "hubRepo": "stevebarrettsrha-ops/STEVEN-X-Home-Hub",
   "categories": [
-    { "id": "media",           "name": "Cinema & Music",  "tagline": "Films, series and your music collection" },
-    { "id": "scripture",       "name": "Scripture",       "tagline": "The reading room of the Word" },
-    { "id": "scripture-games", "name": "Scripture Games", "tagline": "Walk and sail the scripture story" },
-    { "id": "games",           "name": "Games & Arcade",  "tagline": "Console emulation and browser games" },
-    { "id": "tools",           "name": "Tools & Studio",  "tagline": "Transcription, voices, documents and app building" }
+    {
+      "id": "media",
+      "name": "Cinema & Music",
+      "tagline": "Films, series and your music collection"
+    },
+    {
+      "id": "scripture",
+      "name": "Scripture",
+      "tagline": "The reading room of the Word"
+    },
+    {
+      "id": "scripture-games",
+      "name": "Scripture Games",
+      "tagline": "Walk and sail the scripture story"
+    },
+    {
+      "id": "games",
+      "name": "Games & Arcade",
+      "tagline": "Console emulation and browser games"
+    },
+    {
+      "id": "tools",
+      "name": "Tools & Studio",
+      "tagline": "Transcription, voices, documents and app building"
+    },
+    {
+      "id": "ai",
+      "name": "AI Studio",
+      "tagline": "Local AI tools — they run on the server computer's own graphics card"
+    },
+    {
+      "id": "learning",
+      "name": "Learning",
+      "tagline": "Practice papers and study aids"
+    }
   ],
-
   "apps": [
     {
       "id": "reel",
@@ -244,7 +273,385 @@
       "fx": "blocks",
       "icon": "package",
       "desc": "Turn any web page into an installable Android APK with QR-code delivery. Use it on the server computer itself.",
-      "bootLines": ["Unfolding the workbench…", "Sharpening the tools…", "Preparing the docket…", "Ready to build."]
+      "bootLines": ["Unfolding the workbench…", "Sharpening the tools…", "Preparing the docket…", "Ready to build."],
+      "localNote": "is the app workshop — it only works on the server computer itself (finished APKs still reach any phone by QR code). Open the hub on that machine to build apps."
+    },
+    {
+      "id": "practice-test",
+      "name": "PRACTICE TEST",
+      "title": "Painter — Section A Practice Test",
+      "tagline": "Timed practice paper",
+      "desc": "A self-marking practice paper you can sit on any device.",
+      "repo": "stevebarrettsrha-ops/Practice-Test",
+      "type": "static",
+      "category": "learning",
+      "enabled": true,
+      "color1": "#3fb6a8",
+      "color2": "#0c4a44",
+      "fx": "pages",
+      "icon": "doc",
+      "bootLines": ["Laying out the paper…", "Sharpening pencils…", "Ready."]
+    },
+    {
+      "id": "wildlight",
+      "name": "WILDLIGHT",
+      "title": "Wildlight Frontier",
+      "tagline": "Open-world survival · two-player LAN",
+      "desc": "Offline 3D frontier game with folder saves and shared-world co-op.",
+      "repo": "stevebarrettsrha-ops/Wildlight-Frontier",
+      "type": "command",
+      "category": "games",
+      "run": {
+        "win32": "START-WINDOWS.cmd",
+        "darwin": "START-MAC.command",
+        "default": "START-LINUX.sh"
+      },
+      "args": ["-no-browser", "-port", "{port}"],
+      "port": 41739,
+      "start": "onDemand",
+      "enabled": true,
+      "color1": "#6fbf73",
+      "color2": "#1d4a2c",
+      "fx": "embers",
+      "icon": "compass",
+      "bootLines": ["Starting the world server…", "Raising the mountains…", "Filling the rivers…", "Ready."]
+    },
+    {
+      "id": "sound-splitter",
+      "name": "SOUND SPLITTER",
+      "title": "Vocal & Stem Splitter",
+      "tagline": "Pull vocals and instruments apart",
+      "desc": "Splits a song into vocals and backing, on your own machine.",
+      "repo": "stevebarrettsrha-ops/Sound-Splitter",
+      "type": "command",
+      "category": "ai",
+      "subdir": "vocal-splitter",
+      "run": {
+        "win32": "start.bat",
+        "darwin": "start.command",
+        "default": "start.sh"
+      },
+      "port": 8791,
+      "portEnv": "SPLITTER_PORT",
+      "env": {
+        "SPLITTER_NO_BROWSER": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#f59e0b",
+      "color2": "#5a3605",
+      "fx": "bars",
+      "icon": "note",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "grabbit",
+      "name": "GRABBIT",
+      "title": "Video & Audio Downloader",
+      "tagline": "Save videos and audio for offline",
+      "desc": "Downloads video or audio from a link, with quality and chapter options.",
+      "repo": "stevebarrettsrha-ops/grabbit",
+      "type": "command",
+      "category": "ai",
+      "subdir": "grabbit",
+      "run": {
+        "win32": "start-windows.bat",
+        "darwin": "start-mac.command",
+        "default": "start-linux.sh"
+      },
+      "port": 7812,
+      "portEnv": "GRABBIT_PORT",
+      "env": {
+        "GRABBIT_NO_BROWSER": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#fb7185",
+      "color2": "#5c1220",
+      "fx": "blocks",
+      "icon": "package",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."],
+      "patches": [
+        {
+          "file": "grabbit/app.py",
+          "find": "URL = \"http://127.0.0.1:8080\"",
+          "replace": "URL = \"http://127.0.0.1:\" + os.environ.get(\"GRABBIT_PORT\", \"8080\")"
+        },
+        {
+          "file": "grabbit/app.py",
+          "find": "app.run(host=\"127.0.0.1\", port=8080,",
+          "replace": "app.run(host=\"127.0.0.1\", port=int(os.environ.get(\"GRABBIT_PORT\", \"8080\")),"
+        }
+      ]
+    },
+    {
+      "id": "kokoro",
+      "name": "KOKORO STUDIO",
+      "title": "Voice-over & Video Studio",
+      "tagline": "Directed voice-overs, cloned voices, video",
+      "desc": "Write a script, direct the read, render a finished take — plus a video editor.",
+      "repo": "stevebarrettsrha-ops/Kokoro---Local-TTS",
+      "type": "command",
+      "category": "ai",
+      "run": {
+        "win32": "start.bat",
+        "darwin": "start.command",
+        "default": "start.sh"
+      },
+      "port": 8765,
+      "portEnv": "KOKORO_PORT",
+      "env": {
+        "KOKORO_NO_BROWSER": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#a78bfa",
+      "color2": "#34206b",
+      "fx": "waveform",
+      "icon": "mic",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "openvoice",
+      "name": "OPENVOICE",
+      "title": "Voice Cloning Studio",
+      "tagline": "Read any script in a cloned voice",
+      "desc": "Drop in a short clip of a voice, write a script, hear it spoken in that voice.",
+      "repo": "stevebarrettsrha-ops/OpenVoice",
+      "type": "command",
+      "category": "ai",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7811,
+      "portEnv": "OPENVOICE_STUDIO_PORT",
+      "env": {
+        "OPENVOICE_STUDIO_NO_BROWSER": "1",
+        "OPENVOICE_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#38bdf8",
+      "color2": "#0b3a55",
+      "fx": "pulse",
+      "icon": "speaker",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "yue",
+      "name": "YUE STUDIO",
+      "title": "Song Generator — YuE2",
+      "tagline": "Lyrics and a style in, a full song out",
+      "desc": "A local, Suno-style front end for the YuE2 music model.",
+      "repo": "stevebarrettsrha-ops/Yue-2---Suno-Like-Music",
+      "type": "command",
+      "category": "ai",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7788,
+      "portEnv": "YUE_STUDIO_PORT",
+      "env": {
+        "YUE_STUDIO_NO_BROWSER": "1",
+        "YUE_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#f472b6",
+      "color2": "#5b1239",
+      "fx": "bars",
+      "icon": "note",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "m3",
+      "name": "M3 STUDIO",
+      "title": "Song Generator — MiniMax Music",
+      "tagline": "Full songs with vocals, up to six minutes",
+      "desc": "A local front end for MiniMax Music 3.",
+      "repo": "stevebarrettsrha-ops/MINIMAX-MUSIC-H3",
+      "type": "command",
+      "category": "ai",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7789,
+      "portEnv": "M3_STUDIO_PORT",
+      "env": {
+        "M3_STUDIO_NO_BROWSER": "1",
+        "M3_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#34d399",
+      "color2": "#0b4a36",
+      "fx": "waves",
+      "icon": "note",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "ideogram",
+      "name": "IDEOGRAM STUDIO",
+      "title": "Text-to-Image Generator",
+      "tagline": "Describe a picture, place the text, generate",
+      "desc": "A local image generator for Ideogram 4.",
+      "repo": "stevebarrettsrha-ops/Text-to-Image-Generator",
+      "type": "command",
+      "category": "ai",
+      "subdir": "ideogram-studio",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7802,
+      "portEnv": "IDEOGRAM_STUDIO_PORT",
+      "env": {
+        "IDEOGRAM_STUDIO_NO_BROWSER": "1",
+        "IDEOGRAM_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#fbbf24",
+      "color2": "#5a3d05",
+      "fx": "glyphs",
+      "icon": "doc",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "minimax-video",
+      "name": "MINIMAX STUDIO",
+      "title": "Text-to-Video Generator",
+      "tagline": "Describe a scene, get a video",
+      "desc": "A local text-to-video studio.",
+      "repo": "stevebarrettsrha-ops/Text-to-Video-Model",
+      "type": "command",
+      "category": "ai",
+      "subdir": "minimax-studio",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7804,
+      "portEnv": "MINIMAX_STUDIO_PORT",
+      "env": {
+        "MINIMAX_STUDIO_NO_BROWSER": "1",
+        "MINIMAX_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#f87171",
+      "color2": "#5a1414",
+      "fx": "film",
+      "icon": "film",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "avatar",
+      "name": "AVATAR STUDIO",
+      "title": "Talking Avatar Video",
+      "tagline": "A photo and a voice become a talking video",
+      "desc": "Give it a picture of a person and some speech; get a lip-synced video.",
+      "repo": "stevebarrettsrha-ops/Video-Avatar",
+      "type": "command",
+      "category": "ai",
+      "subdir": "avatar-studio",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7808,
+      "portEnv": "AVATAR_STUDIO_PORT",
+      "env": {
+        "AVATAR_STUDIO_NO_BROWSER": "1",
+        "AVATAR_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#c084fc",
+      "color2": "#3d1763",
+      "fx": "pulse",
+      "icon": "film",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "multitalk",
+      "name": "MULTI-TALK",
+      "title": "Two-Person Talking Video",
+      "tagline": "One or two people, speaking from a photo",
+      "desc": "Audio-driven talking video for one or two people.",
+      "repo": "stevebarrettsrha-ops/Multi-Talk",
+      "type": "command",
+      "category": "ai",
+      "subdir": "multitalk-studio",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7807,
+      "portEnv": "MULTITALK_STUDIO_PORT",
+      "env": {
+        "MULTITALK_STUDIO_NO_BROWSER": "1",
+        "MULTITALK_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#60a5fa",
+      "color2": "#152f66",
+      "fx": "waveform",
+      "icon": "speaker",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
+    },
+    {
+      "id": "llama",
+      "name": "LLAMA STUDIO",
+      "title": "Local AI Chat",
+      "tagline": "Chat with an AI model on your own card",
+      "desc": "Picks a model your graphics card can hold, downloads it and chats.",
+      "repo": "stevebarrettsrha-ops/Local-AI---StevenX",
+      "type": "command",
+      "category": "ai",
+      "run": {
+        "win32": "run.bat",
+        "default": "run.sh"
+      },
+      "port": 7806,
+      "portEnv": "LLAMA_STUDIO_PORT",
+      "env": {
+        "LLAMA_STUDIO_NO_BROWSER": "1",
+        "LLAMA_STUDIO_NO_TERMINAL": "1"
+      },
+      "start": "onDemand",
+      "localOnly": true,
+      "host": "127.0.0.1",
+      "enabled": true,
+      "color1": "#5cb872",
+      "color2": "#1f5231",
+      "fx": "glyphs",
+      "icon": "library",
+      "bootLines": ["Starting the studio…", "Checking the Python environment…", "Waking the engine…", "First start can take several minutes…", "Ready."]
     }
   ]
 }

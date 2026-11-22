@@ -7,7 +7,7 @@ it's set up.
 
 ## What it hosts
 
-**Thirteen full apps** in five categories, downloaded straight from their own
+**Twenty-six full apps** in seven categories, downloaded straight from their own
 repositories. The hub groups its tiles and sidebar by these categories (they
 are declared at the top of `apps.json`).
 
@@ -39,6 +39,7 @@ are declared at the top of `apps.json`).
 | **GISH** | Gish Reloaded — the J2ME tar-ball platformer reborn as HTML5, 88 levels | Hosted by the hub at `/apps/gish/` |
 | **SERPENT** | Modern Snake — ten seasonal levels, three kinds of prey, swipe or keys | Hosted by the hub at `/apps/serpent/` |
 | **SPACE IMPACT** | Space Impact: Reforged — the side-scrolling phone shooter, five worlds | Hosted by the hub at `/apps/space-impact/` |
+| **WILDLIGHT** | Wildlight Frontier — offline 3D frontier game with two-player LAN co-op | Started when opened, port **41739** |
 
 ### Tools & Studio
 
@@ -48,6 +49,36 @@ are declared at the top of `apps.json`).
 | **SCRIPT BUILDER** | Text-to-Speech — two-speaker scripts read in natural voices, exported as MP3 | Hosted by the hub at `/apps/script-builder/` |
 | **PDF WORKSHOP** | Complete PDF toolkit — split, compress, OCR, watermark, redact, sign, edit | Hosted by the hub at `/apps/pdf-workshop/` |
 | **PACKR** | Android App Creator — web pages into installable APKs | Own server on port **4477** (use on the server computer) |
+
+### AI Studio
+
+Local AI tools. They run on the **server computer's own graphics card**, so
+they open only on that computer, and each one starts when you open its tile
+(the hub runs the app's own start script). The first start sets up Python and
+downloads models, which can take a long while and a lot of disk.
+
+| App | What it is | Port |
+|---|---|---|
+| **KOKORO STUDIO** | Voice-over and video studio — directed reads, cloned voices | 8765 |
+| **OPENVOICE** | Voice cloning — read any script in a cloned voice | 7811 |
+| **YUE STUDIO** | Song generator (YuE2) — lyrics and a style in, a song out | 7788 |
+| **M3 STUDIO** | Song generator (MiniMax Music) — full songs with vocals | 7789 |
+| **IDEOGRAM STUDIO** | Text-to-image generator | 7802 |
+| **MINIMAX STUDIO** | Text-to-video generator | 7804 |
+| **AVATAR STUDIO** | Talking avatar video from a photo and a voice | 7808 |
+| **MULTI-TALK** | Talking video for one or two people | 7807 |
+| **LLAMA STUDIO** | Local AI chat | 7806 |
+| **SOUND SPLITTER** | Splits a song into vocals and backing | 8791 |
+| **GRABBIT** | Video and audio downloader | 7812 |
+
+These need **Python** on the server computer (each app's own README lists what
+else, such as a graphics card with enough memory).
+
+### Learning
+
+| App | What it is | How the hub runs it |
+|---|---|---|
+| **PRACTICE TEST** | Painter — Section A practice paper | Hosted by the hub at `/apps/practice-test/` |
 
 Every app tile in the hub shows a **live status light** and opens through an
 **animated loading screen** themed to that app.
@@ -64,7 +95,7 @@ in the hub with streaming and instant seeking.
    ```
    node get-apps.js
    ```
-   It pulls all thirteen apps from GitHub into `apps/` — with git if you have it,
+   It pulls all twenty-six apps from GitHub into `apps/` — with git if you have it,
    otherwise as ZIPs. Run it again with `--update` any time to refresh them.
    (The start launchers below also offer to do this on first run.)
 
@@ -101,6 +132,22 @@ under **Continue Watching** and resumes from there next time; the same goes for
 long recordings (20 minutes or more — teachings, audiobooks). Press the **×**
 on a card to forget it. Positions are remembered **per device**, in that
 device's browser.
+
+## Updates
+
+Open **Settings → Updates** in the hub and press **Check for updates**. It
+lists every app — and the hub itself — whose repository has changed, and one
+button downloads them. Running apps are stopped, updated and started again.
+
+- Start a download from the server computer, or from any device that has typed
+  the PIN (when a PIN is set).
+- Your media, saved games, `apps/` additions and `pin.txt` are never touched.
+- After the **hub itself** updates, restart it to use the new version. A hub
+  update replaces `apps.json`, so re-apply any edits you made there (controller
+  layouts, switched-off apps).
+- Private repositories can only be checked if this computer's git is signed in
+  to GitHub.
+- By hand, the same thing is `node get-apps.js --check`, `--update` and `--hub`.
 
 ## Getting around
 
@@ -171,7 +218,8 @@ For when guests are on your Wi‑Fi. Create a file called **`pin.txt`** next to
 
 - **Zero dependencies** — the hub, the downloader and both big apps use only
   Node's built-in modules. There is nothing to `npm install`.
-- **Ports** — hub `8080`, REEL `8081`, ARCADE `8082`, PACKR `4477`. Change the
+- **Ports** — hub `8080`, REEL `8081`, ARCADE `8082`, PACKR `4477`, WILDLIGHT
+  `41739`, the AI Studio apps `7788`–`8791` (table above). Change the
   hub's with `PORT=8090 node server.js`; app ports live in `apps.json`.
 - **Turn an app off** — set its `"enabled": false` in `apps.json`. To move an
   app between categories, change its `"category"`; to add a category, add it

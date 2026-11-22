@@ -392,6 +392,15 @@ input[type=range]:focus-visible{outline:3px solid var(--accent);outline-offset:5
 @keyframes spin{to{transform:rotate(360deg)}}
 .no-results{display:none;text-align:center;color:var(--mut);font-size:13px;padding:44px 16px}
 .no-results b{display:block;color:var(--txt);font-size:15px;margin-bottom:6px;overflow-wrap:anywhere}
+.upd-list{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:6px}
+.upd-list li{display:flex;gap:10px;align-items:baseline;font-size:12.5px;color:var(--txt)}
+.upd-list li span{margin-left:auto;font-size:11px;color:var(--mut);white-space:nowrap}
+.upd-list li.new span{color:var(--accent)}
+.upd-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.upd-actions .btn{padding:9px 16px;font-size:12px}
+.upd-actions .btn:disabled{opacity:.5;cursor:default;transform:none}
+#updLog{display:none;margin-top:12px;max-height:180px;overflow:auto;background:#0a1120;border:1px solid var(--line);border-radius:9px;
+  padding:10px 12px;font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--mut);white-space:pre-wrap;overflow-wrap:anywhere}
 .set-link{font-size:12px;color:var(--mut);text-decoration:underline;margin-top:14px}
 .set-link:hover{color:var(--txt)}
 .menu-btn{display:none;flex:none}
@@ -597,6 +606,18 @@ try{ if(sessionStorage.getItem("stevenx.booted")) document.getElementById("boot"
               <li>On any device, open the <b style="color:var(--txt)">http://…:8080</b> address it prints.</li>
             </ol>
             <p style="margin-top:10px">When you open the hub <b style="color:var(--txt)">through the server</b>, every library loads automatically and videos stream with instant seeking.</p>
+          </div>
+          <div class="set-card" id="updCard">
+            <h3>Updates</h3>
+            <p id="updStatus">See whether any app — or the hub itself — has changes waiting in its repository, and download them.</p>
+            <ul class="upd-list" id="updList"></ul>
+            <div class="upd-actions">
+              <button class="btn ghost" id="updCheck">Check for updates</button>
+              <button class="btn" id="updApply" style="display:none"></button>
+              <button class="btn ghost" id="updMissing" style="display:none"></button>
+              <button class="btn ghost" id="updStale" style="display:none"></button>
+            </div>
+            <div id="updLog" role="log" aria-live="polite"></div>
           </div>
           <div class="set-card">
             <h3>Tips</h3>
@@ -1046,7 +1067,7 @@ async function loadApps(){
   if(!APPS.length) return;
   renderApps();
   refreshAppStatus();
-  setInterval(refreshAppStatus, 15000);
+  if(!loadApps.timer) loadApps.timer = setInterval(refreshAppStatus, 15000);
 }
 
 function openApp(id){
@@ -1073,7 +1094,7 @@ function appCard(a, cat){
     <div class="sys-card app-card ${a.installed?"":"disabled"}" tabindex="0" role="button" data-search="${(a.name+" "+a.title+" "+cat).toLowerCase()}"
          style="background:linear-gradient(120deg,${a.color2},${a.color1})" onclick="openApp('${a.id}')">
       <svg class="glyph" viewBox="0 0 24 24">${ICONS[a.icon]||ICONS.play}</svg>
-      <span class="chip">${a.type==="node" ? "App · port "+a.port : "Full App"}</span>
+      <span class="chip">${a.type==="static" ? "Full App" : a.localOnly ? "This computer · "+a.port : "App · port "+a.port}</span>
       <span class="dot" id="dot-${a.id}" title="status"></span>
       <div><b>${a.name}</b><small>${a.tagline||a.title}</small></div>
       <div class="shine"></div>
@@ -1115,7 +1136,8 @@ async function refreshAppStatus(){
       const r = await fetch("api/app-status?id="+encodeURIComponent(a.id), {cache:"no-store"});
       const j = await r.json();
       if(j.ready){ dot.className = "dot ok"; dot.title = "Running on port "+a.port; }
-      else if(j.state === "failed"){ dot.className = "dot off"; dot.title = "Crashed — check the server window"; }
+      else if(j.state === "failed"){ dot.className = "dot off"; dot.title = "Stopped with an error — check the server window"; }
+      else if(a.start === "onDemand" && j.state === "stopped"){ dot.className = "dot"; dot.title = "Starts when you open it"; }
       else { dot.className = "dot warm"; dot.title = "Starting…"; }
     }catch(e){ dot.className = "dot warm"; dot.title = "Checking…"; }
   }
@@ -1532,6 +1554,84 @@ $("#setReset").addEventListener("click", ()=>{
   CONFIG.hubName = DEFAULT_NAME; $("#setName").value = DEFAULT_NAME; $("#brandName").textContent = DEFAULT_NAME;
   toast("Appearance reset");
 });
+
+/* ============================================================
+   UPDATES — ask the home server which repositories have changed,
+   and have it download them (see /api/updates in server.js).
+   ============================================================ */
+let updInfo = null, updPoll = null;
+function updRender(){
+  const list = $("#updList"), apply = $("#updApply"), missing = $("#updMissing"), stale = $("#updStale"), status = $("#updStatus");
+  if(!updInfo){ list.innerHTML = ""; apply.style.display = missing.style.display = stale.style.display = "none"; return; }
+  const apps = updInfo.apps || [];
+  const fresh = apps.filter(a=>a.update === true), absent = apps.filter(a=>!a.installed),
+        unknown = apps.filter(a=>a.installed && a.update === null), current = apps.filter(a=>a.update === false);
+  const hubNew = updInfo.hub && updInfo.hub.update === true;
+  const n = fresh.length + (hubNew ? 1 : 0);
+  status.textContent = n ? `${n} update${n===1?"":"s"} waiting.` : "Everything that could be checked is up to date.";
+  const row = (name, text, cls) => `<li class="${cls||""}"><b>${esc(name)}</b><span>${text}</span></li>`;
+  list.innerHTML =
+    (hubNew ? row("Home Hub (this page and the server)", "update available", "new") : "") +
+    fresh.map(a=>row(a.name, "update available", "new")).join("") +
+    (current.length ? row(`${current.length} app${current.length===1?"":"s"}`, "up to date") : "") +
+    (updInfo.hub && updInfo.hub.update === false ? row("Home Hub", "up to date") : "") +
+    unknown.map(a=>row(a.name, a.remote && !a.local ? "version not recorded yet" : "can't check (private or offline)")).join("") +
+    (updInfo.hub && updInfo.hub.update === null ? row("Home Hub", updInfo.hub.remote && !updInfo.hub.local ? "version not recorded yet" : "can't check") : "") +
+    (absent.length ? row(`${absent.length} app${absent.length===1?"":"s"}`, "not downloaded yet") : "");
+  const can = updInfo.canUpdate;
+  apply.style.display = n ? "" : "none";
+  apply.textContent = `Download ${n} update${n===1?"":"s"}`;
+  apply.disabled = !can;
+  apply.onclick = ()=>updStart(fresh.map(a=>a.id), hubNew, false);
+  missing.style.display = absent.length ? "" : "none";
+  missing.textContent = `Download ${absent.length} missing app${absent.length===1?"":"s"}`;
+  missing.disabled = !can;
+  missing.onclick = ()=>updStart(absent.map(a=>a.id), false, true);
+  // Copies downloaded before the hub kept track of versions: offer the latest anyway.
+  const noRecord = unknown.filter(a=>a.remote && !a.local);
+  const hubNoRecord = !!(updInfo.hub && updInfo.hub.update === null && updInfo.hub.remote && !updInfo.hub.local);
+  const m = noRecord.length + (hubNoRecord ? 1 : 0);
+  stale.style.display = m ? "" : "none";
+  stale.textContent = `Get the latest for ${m} unchecked`;
+  stale.disabled = !can;
+  stale.onclick = ()=>updStart(noRecord.map(a=>a.id), hubNoRecord, false);
+  if(!can && (n || absent.length || m)) status.textContent += " Start the download from the server computer (or set a PIN to allow it from any unlocked device).";
+}
+async function updCheck(fresh){
+  if(!SERVER){ toast("Open the hub through the home server to check for updates"); return; }
+  const btn = $("#updCheck"); btn.disabled = true; btn.textContent = "Checking…";
+  try{
+    const r = await fetch("api/updates"+(fresh?"?fresh=1":""), {cache:"no-store"});
+    const j = await r.json();
+    if(!j.ok){ $("#updStatus").textContent = j.error || "Could not check for updates."; updInfo = null; }
+    else updInfo = j;
+  }catch(e){ $("#updStatus").textContent = "Could not reach the home server."; updInfo = null; }
+  btn.disabled = false; btn.textContent = "Check again";
+  updRender();
+}
+async function updStart(ids, hub, installOnly){
+  try{
+    const r = await fetch(`api/update?ids=${encodeURIComponent(ids.join(","))}${hub?"&hub=1":""}${installOnly?"&mode=install":""}`, {method:"POST"});
+    const j = await r.json();
+    if(!j.ok){ toast(j.error || "Could not start the update"); return; }
+  }catch(e){ toast("Could not reach the home server"); return; }
+  $("#updApply").disabled = $("#updMissing").disabled = $("#updStale").disabled = $("#updCheck").disabled = true;
+  $("#updStatus").textContent = "Downloading… keep the hub window open on the server.";
+  const log = $("#updLog"); log.style.display = "block"; log.textContent = "";
+  clearInterval(updPoll);
+  updPoll = setInterval(async ()=>{
+    let j; try{ j = await (await fetch("api/update-status", {cache:"no-store"})).json(); }catch(e){ return; }
+    log.textContent = (j.log||[]).join("\n"); log.scrollTop = log.scrollHeight;
+    if(j.running) return;
+    clearInterval(updPoll);
+    $("#updCheck").disabled = false;
+    await updCheck(true);
+    $("#updStatus").textContent = (j.ok ? "Update finished. " : "The update finished with problems — see the lines below. ") +
+      (j.hubUpdated ? "Restart the hub on the server computer to use its new version." : "");
+    if(j.ok) loadApps();
+  }, 1500);
+}
+$("#updCheck").addEventListener("click", ()=>updCheck(true));
 
 /* ============================================================
    KEYBOARD + TV REMOTE
