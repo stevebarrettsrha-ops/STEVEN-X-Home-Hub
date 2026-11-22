@@ -160,6 +160,10 @@ button downloads them. Running apps are stopped, updated and started again.
   change page, **Y** is Home, **X** pauses music, **Start** opens Settings, the
   right stick scrolls. In a film: **A** play/pause, left/right skip 10 seconds,
   up/down volume, **B** close. ARCADE's library uses the same layout.
+- **Typing with a controller** — **Back/Select** opens search with an on-screen
+  keyboard, and **A** on any text box does the same. On the keyboard: **A**
+  types, **X** deletes, **Y** is space, **Start** is done, **B** closes. The PIN
+  screen shows a number pad when a controller is connected.
 - **Search** — on Home it looks through the apps *and* inside every folder
   library; on a library page it filters that library.
 - **Back button** — steps back through the hub's pages instead of leaving it.

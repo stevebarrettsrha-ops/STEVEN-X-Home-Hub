@@ -444,6 +444,12 @@ button{width:100%;margin-top:14px;font:inherit;font-weight:700;padding:13px;bord
   background:#5cb872;color:#07160c;cursor:pointer}
 button:disabled{opacity:.5;cursor:default}
 #msg{min-height:18px;margin-top:14px;font-size:12.5px;color:#ff8f8f}
+#pad{display:none;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+#pad.on{display:grid}
+#pad button{margin:0;padding:0;height:52px;font-size:20px;background:#152238;color:#e9eefb;border:1px solid rgba(255,255,255,.14)}
+#pad button:focus{outline:none;background:#5cb872;color:#07160c}
+#hint{display:none;margin-top:12px;font-size:11px;color:#8ea3c4}
+#pad.on ~ #hint{display:block}
 </style></head><body>
 <form id="f" autocomplete="off">
   <img src="/icon-192.png" alt="">
@@ -451,6 +457,8 @@ button:disabled{opacity:.5;cursor:default}
   <p>Enter the house PIN to open the Home Hub.</p>
   <input id="pin" type="password" inputmode="numeric" maxlength="32" aria-label="PIN" autofocus>
   <button id="go">Unlock</button>
+  <div id="pad" aria-label="Number pad"></div>
+  <div id="hint">D-pad move · A press · B delete · Start unlock</div>
   <div id="msg" role="alert"></div>
 </form>
 <script>
@@ -467,6 +475,46 @@ function hold(secs){
   };
   tick(); timer = setInterval(tick, 1000);
 }
+/* A game controller can't type, so it gets a number pad of its own. */
+const padBox = document.getElementById("pad");
+const KEYS = ["1","2","3","4","5","6","7","8","9","\u232B","0","OK"];
+padBox.innerHTML = KEYS.map(k => '<button type="button" data-k="' + k + '">' + k + '</button>').join("");
+const padBtns = [...padBox.querySelectorAll("button")];
+padBox.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const k = b.dataset.k;
+  if (k === "OK") return f.requestSubmit();
+  if (k === "\u232B") pin.value = pin.value.slice(0, -1);
+  else if (pin.value.length < 32) pin.value += k;
+});
+let was = {}, rep = {}, shown = false;
+function tick(){
+  requestAnimationFrame(tick);
+  let p = null;
+  try { p = [...navigator.getGamepads()].find(g => g && g.connected && g.buttons.length); } catch (e) {}
+  if (!p) return;
+  if (!shown) { shown = true; padBox.classList.add("on"); padBtns[4].focus(); }
+  const b = i => !!(p.buttons[i] && (p.buttons[i].pressed || p.buttons[i].value > 0.5));
+  const s = { a:b(0), b:b(1), start:b(9), up:b(12) || p.axes[1] < -0.55, down:b(13) || p.axes[1] > 0.55,
+              left:b(14) || p.axes[0] < -0.55, right:b(15) || p.axes[0] > 0.55 };
+  const now = performance.now();
+  let i = padBtns.indexOf(document.activeElement); if (i < 0) i = 4;
+  const step = { up:-3, down:3, left:-1, right:1 };
+  for (const d in step) {
+    if (!s[d]) { delete rep[d]; continue; }
+    if (rep[d] !== undefined && now < rep[d]) continue;
+    rep[d] = now + (rep[d] === undefined ? 380 : 140);
+    const j = i + step[d];
+    const sameRow = Math.floor(j / 3) === Math.floor(i / 3);
+    if (j >= 0 && j < 12 && (step[d] % 3 === 0 || sameRow)) { i = j; padBtns[i].focus(); }
+  }
+  if (s.a && !was.a) padBtns[i].click();
+  if (s.b && !was.b) pin.value = pin.value.slice(0, -1);
+  if (s.start && !was.start) f.requestSubmit();
+  was = s;
+}
+if (navigator.getGamepads) requestAnimationFrame(tick);
+
 f.addEventListener("submit", async e => {
   e.preventDefault();
   if (go.disabled || !pin.value) return;
