@@ -7,7 +7,7 @@ it's set up.
 
 ## What it hosts
 
-**Thirteen full apps** in five categories, downloaded straight from their own
+**Twenty-six full apps** in seven categories, downloaded straight from their own
 repositories. The hub groups its tiles and sidebar by these categories (they
 are declared at the top of `apps.json`).
 
@@ -39,6 +39,7 @@ are declared at the top of `apps.json`).
 | **GISH** | Gish Reloaded — the J2ME tar-ball platformer reborn as HTML5, 88 levels | Hosted by the hub at `/apps/gish/` |
 | **SERPENT** | Modern Snake — ten seasonal levels, three kinds of prey, swipe or keys | Hosted by the hub at `/apps/serpent/` |
 | **SPACE IMPACT** | Space Impact: Reforged — the side-scrolling phone shooter, five worlds | Hosted by the hub at `/apps/space-impact/` |
+| **WILDLIGHT** | Wildlight Frontier — offline 3D frontier game with two-player LAN co-op | Started when opened, port **41739** |
 
 ### Tools & Studio
 
@@ -48,6 +49,36 @@ are declared at the top of `apps.json`).
 | **SCRIPT BUILDER** | Text-to-Speech — two-speaker scripts read in natural voices, exported as MP3 | Hosted by the hub at `/apps/script-builder/` |
 | **PDF WORKSHOP** | Complete PDF toolkit — split, compress, OCR, watermark, redact, sign, edit | Hosted by the hub at `/apps/pdf-workshop/` |
 | **PACKR** | Android App Creator — web pages into installable APKs | Own server on port **4477** (use on the server computer) |
+
+### AI Studio
+
+Local AI tools. They run on the **server computer's own graphics card**, so
+they open only on that computer, and each one starts when you open its tile
+(the hub runs the app's own start script). The first start sets up Python and
+downloads models, which can take a long while and a lot of disk.
+
+| App | What it is | Port |
+|---|---|---|
+| **KOKORO STUDIO** | Voice-over and video studio — directed reads, cloned voices | 8765 |
+| **OPENVOICE** | Voice cloning — read any script in a cloned voice | 7811 |
+| **YUE STUDIO** | Song generator (YuE2) — lyrics and a style in, a song out | 7788 |
+| **M3 STUDIO** | Song generator (MiniMax Music) — full songs with vocals | 7789 |
+| **IDEOGRAM STUDIO** | Text-to-image generator | 7802 |
+| **MINIMAX STUDIO** | Text-to-video generator | 7804 |
+| **AVATAR STUDIO** | Talking avatar video from a photo and a voice | 7808 |
+| **MULTI-TALK** | Talking video for one or two people | 7807 |
+| **LLAMA STUDIO** | Local AI chat | 7806 |
+| **SOUND SPLITTER** | Splits a song into vocals and backing | 8791 |
+| **GRABBIT** | Video and audio downloader | 7812 |
+
+These need **Python** on the server computer (each app's own README lists what
+else, such as a graphics card with enough memory).
+
+### Learning
+
+| App | What it is | How the hub runs it |
+|---|---|---|
+| **PRACTICE TEST** | Painter — Section A practice paper | Hosted by the hub at `/apps/practice-test/` |
 
 Every app tile in the hub shows a **live status light** and opens through an
 **animated loading screen** themed to that app.
@@ -64,7 +95,7 @@ in the hub with streaming and instant seeking.
    ```
    node get-apps.js
    ```
-   It pulls all thirteen apps from GitHub into `apps/` — with git if you have it,
+   It pulls all twenty-six apps from GitHub into `apps/` — with git if you have it,
    otherwise as ZIPs. Run it again with `--update` any time to refresh them.
    (The start launchers below also offer to do this on first run.)
 
@@ -102,6 +133,22 @@ long recordings (20 minutes or more — teachings, audiobooks). Press the **×**
 on a card to forget it. Positions are remembered **per device**, in that
 device's browser.
 
+## Updates
+
+Open **Settings → Updates** in the hub and press **Check for updates**. It
+lists every app — and the hub itself — whose repository has changed, and one
+button downloads them. Running apps are stopped, updated and started again.
+
+- Start a download from the server computer, or from any device that has typed
+  the PIN (when a PIN is set).
+- Your media, saved games, `apps/` additions and `pin.txt` are never touched.
+- After the **hub itself** updates, restart it to use the new version. A hub
+  update replaces `apps.json`, so re-apply any edits you made there (controller
+  layouts, switched-off apps).
+- Private repositories can only be checked if this computer's git is signed in
+  to GitHub.
+- By hand, the same thing is `node get-apps.js --check`, `--update` and `--hub`.
+
 ## Getting around
 
 - **Phones** — the menu button (top left) slides the full menu in; swipe the
@@ -117,6 +164,29 @@ device's browser.
 - The startup animation plays once per visit; after that the hub opens straight
   away. Accent colour, hub name and the ambient background (Settings) are
   remembered on each device.
+
+## Game controllers and touch
+
+**GISH, SERPENT and SPACE IMPACT** take a real controller (Xbox, PlayStation or
+Bluetooth) when played on a computer. Plug it in, open the game from the hub
+and press any button — a note shows the layout.
+
+| Game | Layout |
+|---|---|
+| **GISH** | Stick or D-pad move · **A** jump (select in menus) · **X** / **RT** sticky · **B** / **LT** slick (back in menus) · **Y** attack · **Start** pause |
+| **SERPENT** | Stick or D-pad steer · **A** / **Start** start, pause, retry |
+| **SPACE IMPACT** | Stick or D-pad fly · **A** / **RT** fire · **B** back · **X** weapon · **Y** boost · **LB** / **RB** throttle · **LT** autofire · **Start** pause · **Back** map · **L3** camera · **R3** dock |
+
+To change a layout, edit that game's `"pad"` block in `apps.json` (button
+numbers follow the standard layout: 0 = A, 1 = B, 2 = X, 3 = Y, 4/5 = LB/RB,
+6/7 = LT/RT, 8 = Back, 9 = Start) and restart the hub.
+
+On a phone or tablet, GISH and SPACE IMPACT use their own on-screen controls,
+and SERPENT gets an on-screen D-pad under the board as well as swipes.
+
+The hub adds this to the games as it serves them (`pad-bridge.js`); the games'
+own files are not changed, so it applies when they are opened through the hub.
+BERĔSHITH and THE VOYAGE have their own controller support built in.
 
 ## Put it on your home screen
 
@@ -136,15 +206,20 @@ For when guests are on your Wi‑Fi. Create a file called **`pin.txt`** next to
 - Five wrong tries and that device has to wait (30 seconds, doubling each time).
 - Change the PIN and every device is asked again. Delete `pin.txt` and restart
   to switch the lock off.
-- **Limit:** REEL, ARCADE and PACKR run on their own ports, so the PIN does not
-  cover them — it protects the hub page, the six folder libraries and the apps
-  hosted at `/apps/…`.
+- **It covers everything** — the hub page, the six folder libraries, the apps
+  at `/apps/…`, and REEL, ARCADE and PACKR on their own ports. While the PIN is
+  on, those three listen on the server computer only and the hub answers on
+  their ports (8081, 8082, 4477), checks the PIN and passes requests through.
+  Unlocking once on a device unlocks all of them.
+- PACKR stays a server-computer tool: other devices can only fetch a finished
+  download through its QR link (after the PIN).
 
 ## Good to know
 
 - **Zero dependencies** — the hub, the downloader and both big apps use only
   Node's built-in modules. There is nothing to `npm install`.
-- **Ports** — hub `8080`, REEL `8081`, ARCADE `8082`, PACKR `4477`. Change the
+- **Ports** — hub `8080`, REEL `8081`, ARCADE `8082`, PACKR `4477`, WILDLIGHT
+  `41739`, the AI Studio apps `7788`–`8791` (table above). Change the
   hub's with `PORT=8090 node server.js`; app ports live in `apps.json`.
 - **Turn an app off** — set its `"enabled": false` in `apps.json`. To move an
   app between categories, change its `"category"`; to add a category, add it

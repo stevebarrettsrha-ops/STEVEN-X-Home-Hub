@@ -16,6 +16,8 @@
    ============================================================================ */
 
 const http = require("http");
+const https = require("https");
+const net  = require("net");
 const fs   = require("fs");
 const path = require("path");
 const os   = require("os");
@@ -45,8 +47,13 @@ function appGroups() {
 }
 
 const appDir       = a => path.join(APPS_DIR, a.id, a.subdir || "");
-const appEntry     = a => a.type === "node" ? path.join(appDir(a), a.serverFile || "server.js")
-                                            : path.join(appDir(a), "index.html");
+// "command" apps are started by a script in their own folder (a Python studio's
+// run.sh / run.bat, a game's launcher) — one file name per operating system.
+const runFile      = a => (a.run || {})[process.platform] || (a.run || {}).default || "run.sh";
+const onDemand     = a => a.start === "onDemand";
+const appEntry     = a => a.type === "node"    ? path.join(appDir(a), a.serverFile || "server.js")
+                        : a.type === "command" ? path.join(appDir(a), runFile(a))
+                                               : path.join(appDir(a), "index.html");
 const appInstalled = a => { try { return fs.existsSync(appEntry(a)); } catch (e) { return false; } };
 
 // Each hub "system" maps to a folder of the same name and a set of file types.
@@ -81,7 +88,7 @@ const MIME = {
 };
 // Files in the hub folder that browsers may fetch directly. Add a name here if
 // the hub pages ever need another file (an icon, a stylesheet …).
-const HUB_FILES = new Set(["index.html", "launch.html", "manifest.webmanifest",
+const HUB_FILES = new Set(["index.html", "launch.html", "pad-bridge.js", "manifest.webmanifest",
                            "icon-192.png", "icon-512.png", "apple-touch-icon.png"]);
 // The home-screen icon + manifest stay reachable even when the PIN lock is on,
 // so "Add to Home Screen" works (they contain nothing private).
@@ -162,6 +169,35 @@ function serveFile(req, res, full) {
   }
 }
 
+// Games with a "pad" block in apps.json get the hub's controller + touch bridge
+// (pad-bridge.js) added to their pages as they are served. The game's files on
+// disk are never touched, so updating an app can't undo it. Returns false when
+// the file isn't a page, and the caller serves it the normal way.
+function servePageWithPad(req, res, full, app) {
+  let stat;
+  try {
+    stat = fs.statSync(full);
+    if (stat.isDirectory()) { full = path.join(full, "index.html"); stat = fs.statSync(full); }
+  } catch (e) { return false; }
+  if (!/\.html?$/i.test(full) || stat.size > 20 * 1024 * 1024) return false;
+  let html;
+  try { html = fs.readFileSync(full, "utf8"); } catch (e) { return false; }
+  const config = JSON.stringify(app.pad).replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/</g, "&lt;");
+  const tag = "<script src=\"/pad-bridge.js\" data-pad='" + config + "'></script>\n";
+  const at = html.search(/<\/head>/i);
+  html = at === -1 ? tag + html : html.slice(0, at) + tag + html.slice(at);
+  const body = Buffer.from(html, "utf8");
+  const etag = '"' + crypto.createHash("sha1").update(body).digest("hex").slice(0, 20) + '"';
+  const headers = { "ETag": etag, "Cache-Control": "no-cache", "Content-Type": "text/html; charset=utf-8" };
+  if ((req.headers["if-none-match"] || "").split(",").some(t => t.trim().replace(/^W\//, "") === etag)) {
+    res.writeHead(304, headers); res.end(); return true;
+  }
+  headers["Content-Length"] = body.length;
+  res.writeHead(200, headers);
+  res.end(req.method === "HEAD" ? undefined : body);
+  return true;
+}
+
 // decodeURIComponent throws on malformed input like "%zz" — never let a bad
 // link take the server down. Returns null instead.
 function safeDecode(s) {
@@ -189,12 +225,46 @@ const children = {};   // app.id -> { proc, restarts, state: starting|running|fa
 
 function startApp(app) {
   if (!appInstalled(app)) return;
+  const c = children[app.id] = children[app.id] || { restarts: 0 };
+  // With the PIN lock on, the app is moved to a private port on this computer
+  // only, and the hub takes over its usual port to check the PIN (see APP
+  // FRONT DOORS below). First start: pick the private port, open the door.
+  if (c.proc && c.proc.exitCode === null && c.proc.signalCode === null) return;   // already running
+  const guard = !!PIN && app.type === "node";
+  if (guard && !c.privatePort) {
+    c.state = "starting";
+    return freePort(port => {
+      if (!port) { c.state = "failed"; return console.error("  [" + app.id + "] could not reserve a private port"); }
+      c.privatePort = port;
+      openFrontDoor(app, c);
+      startApp(app);
+    });
+  }
   const entry = appEntry(app);
   const env = Object.assign({}, process.env);
   env[app.portEnv || "PORT"] = String(app.port);
-  const proc = spawn(process.execPath, [entry], { cwd: appDir(app), env });
-  const c = children[app.id] = children[app.id] || { restarts: 0 };
+  if (app.env) Object.assign(env, app.env);
+  let cmd = process.execPath, args = [entry], opts = { cwd: appDir(app), env };
+  if (app.type === "command") {
+    // Run the app's own start script. Its window output is relayed here, it
+    // gets no keyboard, and on Mac/Linux it runs as its own process group so
+    // stopping the hub also stops whatever the script started (Python, etc.).
+    const extra = (app.args || []).map(a => String(a).replace("{port}", app.port));
+    if (process.platform === "win32") {
+      if (/\.(bat|cmd)$/i.test(entry)) { cmd = "cmd.exe"; args = ["/d", "/c", path.basename(entry)].concat(extra); }
+      else { cmd = entry; args = extra; }
+    } else { cmd = "bash"; args = [entry].concat(extra); opts.detached = true; }
+    opts.stdio = ["ignore", "pipe", "pipe"];
+    c.group = process.platform !== "win32";
+  }
+  if (guard) {
+    args.unshift("--require", path.join(ROOT, "hub-guard.js"));
+    env.HUB_GUARD_PORTS = JSON.stringify({ [app.port]: c.privatePort });
+    delete env.ARCADE_HTTPS;          // the hub serves ARCADE's HTTPS port itself (PIN-checked)
+  }
+  const proc = spawn(cmd, args, opts);
   c.proc = proc; c.state = "starting";
+  proc.on("error", err => { c.state = "failed"; console.error("  [" + app.id + "] could not start: " + err.message); });
 
   const tag = "[" + app.id + "] ";
   const relay = data => {
@@ -203,7 +273,12 @@ function startApp(app) {
   proc.stdout.on("data", relay);
   proc.stderr.on("data", relay);
   proc.on("exit", (code, sig) => {
-    if (shuttingDown) { c.state = "stopped"; return; }
+    if (shuttingDown || c.updating) { c.state = "stopped"; return; }   // stopped on purpose
+    if (onDemand(app)) {
+      // Opened from its tile, so it is simply started again the next time it is opened.
+      c.state = code === 0 ? "stopped" : "failed";
+      return console.error("  " + tag + "stopped (" + (sig || code) + ")" + (code === 0 ? "" : " — see the lines above for the reason"));
+    }
     c.state = "failed";
     console.error("  " + tag + "exited (" + (sig || code) + ")");
     if (c.restarts < 5) {
@@ -217,23 +292,29 @@ function startApp(app) {
   });
 }
 
+// Stop one app. Script-started apps are stopped together with everything the
+// script launched (the whole process group, or the process tree on Windows).
+function stopApp(c, force) {
+  if (!c.proc || c.proc.exitCode !== null || c.proc.signalCode !== null) return;
+  try {
+    if (c.group) process.kill(-c.proc.pid, force ? "SIGKILL" : "SIGTERM");
+    else if (process.platform === "win32" && c.group === false) spawn("taskkill", ["/pid", String(c.proc.pid), "/T", "/F"], { stdio: "ignore" });
+    else c.proc.kill(force ? "SIGKILL" : undefined);
+  } catch (e) { try { c.proc.kill(force ? "SIGKILL" : undefined); } catch (e2) {} }
+}
+
 let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("\n  Shutting down the hub and every app…");
-  for (const id of Object.keys(children)) {
-    const c = children[id];
-    if (c.proc && c.proc.exitCode === null) { try { c.proc.kill(); } catch (e) {} }
-  }
+  for (const id of Object.keys(children)) stopApp(children[id], false);
   server.close();
+  for (const d of frontDoors) { try { d.close(); } catch (e) {} }
   // Any app that ignores the polite stop gets force-killed before we leave —
   // no orphaned servers holding ports after the hub window closes.
   setTimeout(() => {
-    for (const id of Object.keys(children)) {
-      const c = children[id];
-      if (c.proc && c.proc.exitCode === null) { try { c.proc.kill("SIGKILL"); } catch (e) {} }
-    }
+    for (const id of Object.keys(children)) stopApp(children[id], true);
     process.exit(0);
   }, 1500);
 }
@@ -242,7 +323,8 @@ process.on("SIGTERM", shutdown);
 
 // Ask a child app whether it is answering HTTP yet (used by the loading screens).
 function probeApp(app, cb) {
-  const req = http.get({ host: "127.0.0.1", port: app.port, path: "/", timeout: 1500 }, res => {
+  const port = (children[app.id] || {}).privatePort || app.port;
+  const req = http.get({ host: "127.0.0.1", port, path: "/", timeout: 1500 }, res => {
     res.resume();
     cb(res.statusCode > 0);
   });
@@ -403,6 +485,197 @@ f.addEventListener("submit", async e => {
 </script>
 </body></html>`;
 
+// Only this hub's own pages may ask it to do things — not some other website
+// that happens to be open in the same browser.
+function sameSite(req) {
+  if (!req.headers.origin) return true;
+  try { return new URL(req.headers.origin).host === req.headers.host; } catch (e) { return false; }
+}
+
+/* ============================================================================
+   UPDATES — the hub can fetch changes made to its apps' repositories (and to
+   its own) from the Settings page. The work is done by get-apps.js; this part
+   checks, stops the apps being replaced, runs it, and starts them again.
+   Allowed from the server computer, or from any device that has typed the PIN.
+   ============================================================================ */
+const updateJob = { running: false, ok: null, hubUpdated: false, log: [], finishedAt: 0 };
+let updateCheck = { at: 0, data: null, pending: null };
+
+function runGetApps(args, onLine) {
+  return new Promise(resolve => {
+    const env = Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: "0" });
+    const p = spawn(process.execPath, [path.join(ROOT, "get-apps.js")].concat(args), { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
+    let buf = "";
+    const feed = d => {
+      buf += String(d).replace(/\r/g, "\n");
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const l of lines) if (l.trim()) onLine(l.replace(/\s+$/, ""));
+    };
+    p.stdout.on("data", feed); p.stderr.on("data", feed);
+    p.on("error", () => resolve(1));
+    p.on("close", code => { if (buf.trim()) onLine(buf); resolve(code); });
+  });
+}
+
+function checkForUpdates(fresh) {
+  if (updateCheck.pending) return updateCheck.pending;
+  if (!fresh && updateCheck.data && Date.now() - updateCheck.at < 5 * 60 * 1000) return Promise.resolve(updateCheck.data);
+  let found = null;
+  updateCheck.pending = runGetApps(["--check"], l => { if (l.startsWith("HUBJSON:")) { try { found = JSON.parse(l.slice(8)); } catch (e) {} } })
+    .then(() => {
+      updateCheck.pending = null;
+      if (found) updateCheck = { at: Date.now(), data: found, pending: null };
+      return found;
+    });
+  return updateCheck.pending;
+}
+
+const mayUpdate = req => requestIsLocal(req) || (!!PIN && hasPinCookie(req));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function runUpdate(ids, includeHub, installOnly) {
+  Object.assign(updateJob, { running: true, ok: null, hubUpdated: false, log: [] });
+  const note = l => { updateJob.log.push(l); if (updateJob.log.length > 400) updateJob.log.shift(); console.log("  [update] " + l.trim()); };
+  let ok = true;
+  // Stop anything about to be replaced (Windows will not overwrite files in use).
+  const paused = [];
+  for (const id of ids) {
+    const c = children[id];
+    if (c && c.proc && c.proc.exitCode === null && c.proc.signalCode === null) { c.updating = true; stopApp(c, false); paused.push(id); }
+  }
+  if (paused.length) { note("Stopping " + paused.join(", ") + " while they update…"); await sleep(2000); for (const id of paused) stopApp(children[id], true); }
+  try {
+    if (ids.length) ok = (await runGetApps((installOnly ? [] : ["--update"]).concat(ids), note)) === 0 && ok;
+    if (includeHub) {
+      const hubOk = (await runGetApps(["--hub"], note)) === 0;
+      updateJob.hubUpdated = hubOk; ok = hubOk && ok;
+    }
+  } catch (e) { ok = false; note("Update stopped: " + e.message); }
+  for (const id of paused) {
+    const c = children[id], app = APPS.find(a => a.id === id);
+    c.updating = false; c.restarts = 0;
+    if (app && !onDemand(app)) startApp(app);
+  }
+  updateCheck = { at: 0, data: null, pending: null };
+  Object.assign(updateJob, { running: false, ok, finishedAt: Date.now() });
+  note(ok ? "Finished." : "Finished with problems — see the lines above.");
+}
+
+// Tell a device it has to unlock first: the PIN page for a browser, JSON otherwise.
+function sendLocked(req, res) {
+  const wantsPage = /text\/html/.test(req.headers.accept || "") && (req.method === "GET" || req.method === "HEAD");
+  if (wantsPage) {
+    res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    return res.end(req.method === "HEAD" ? "" : LOCK_PAGE);
+  }
+  res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify({ error: "locked" }));
+}
+
+/* ============================================================================
+   APP FRONT DOORS — the PIN for REEL, ARCADE and PACKR.
+   Those apps run their own servers on their own ports, so the hub's PIN check
+   never saw their traffic. With the PIN on, each app is started behind
+   hub-guard.js (private port, this computer only) and the hub listens on the
+   app's public port instead: it checks the PIN, then passes the request —
+   streaming, seeking, uploads and WebSockets included — straight through.
+   The browser's PIN cookie is shared by every port on the hub's address, so
+   unlocking the hub unlocks the apps too. Nothing here runs with the PIN off.
+   ============================================================================ */
+const frontDoors = [];
+
+function freePort(cb) {
+  const probe = net.createServer();
+  probe.once("error", () => cb(0));
+  probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => cb(port)); });
+}
+
+// The hub's own cookie is no business of the app behind the door.
+function withoutPinCookie(cookie) {
+  return String(cookie || "").split(";").filter(p => p.split("=")[0].trim() !== PIN_COOKIE).join(";").trim();
+}
+
+// Apps marked "localOnly" (PACKR) are for the server computer; other devices
+// may only fetch the paths listed in the app's "lanPaths" (finished downloads).
+function lanMayReach(app, req, pathname) {
+  if (!app.localOnly) return true;
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  return (app.lanPaths || []).some(p => pathname.startsWith(p));
+}
+
+function openFrontDoor(app, c) {
+  const tag = "  [" + app.id + "] ";
+
+  const onRequest = (req, res) => {
+    let pathname = "/";
+    try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
+    const local = requestIsLocal(req);
+    if (!local && !hasPinCookie(req)) {
+      if (pathname === "/api/unlock") return handleUnlock(req, res);
+      return sendLocked(req, res);
+    }
+    if (!local && !lanMayReach(app, req, pathname)) {
+      res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(app.name + " is used on the server computer itself.");
+    }
+    const headers = Object.assign({}, req.headers);
+    const cookie = withoutPinCookie(headers.cookie);
+    if (cookie) headers.cookie = cookie; else delete headers.cookie;
+    const upstream = http.request(
+      { host: "127.0.0.1", port: c.privatePort, method: req.method, path: req.url, headers },
+      ures => { res.writeHead(ures.statusCode, ures.statusMessage, ures.headers); ures.pipe(res); }
+    );
+    upstream.on("error", () => {
+      if (res.headersSent) return res.destroy();
+      res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(app.name + " is still starting — try again in a moment.");
+    });
+    res.on("close", () => upstream.destroy());
+    req.pipe(upstream);
+  };
+
+  // WebSockets (ARCADE's phone-as-controller link) get the same check.
+  const onUpgrade = (req, socket, head) => {
+    let pathname = "/";
+    try { pathname = new URL(req.url, "http://x").pathname; } catch (e) {}
+    const local = requestIsLocal(req);
+    if ((!local && !hasPinCookie(req)) || (!local && !lanMayReach(app, req, pathname))) return socket.destroy();
+    const upstream = net.connect(c.privatePort, "127.0.0.1", () => {
+      let raw = req.method + " " + req.url + " HTTP/" + req.httpVersion + "\r\n";
+      for (let i = 0; i < req.rawHeaders.length; i += 2) raw += req.rawHeaders[i] + ": " + req.rawHeaders[i + 1] + "\r\n";
+      upstream.write(raw + "\r\n");
+      if (head && head.length) upstream.write(head);
+      socket.pipe(upstream); upstream.pipe(socket);
+    });
+    upstream.on("error", () => socket.destroy());
+    socket.on("error", () => upstream.destroy());
+    socket.on("close", () => upstream.destroy());
+    upstream.on("close", () => socket.destroy());
+  };
+
+  const open = (srv, port, label) => {
+    srv.requestTimeout = 0;                         // long uploads and streams are normal here
+    srv.on("request", onRequest);
+    srv.on("upgrade", onUpgrade);
+    srv.on("error", err => console.error(tag + label + " port " + port + " could not be opened: " + (err && err.code === "EADDRINUSE" ? "already in use" : err.message)));
+    srv.listen(port);
+    frontDoors.push(srv);
+  };
+  open(http.createServer(), app.port, "PIN door on");
+
+  // ARCADE's optional HTTPS mode (ARCADE_HTTPS=1, for Java games over the LAN):
+  // the hub serves that port too, with ARCADE's own certificate.
+  if (app.id === "arcade" && process.env.ARCADE_HTTPS === "1") {
+    try {
+      const key  = fs.readFileSync(path.join(appDir(app), "certs", "key.pem"));
+      const cert = fs.readFileSync(path.join(appDir(app), "certs", "cert.pem"));
+      open(https.createServer({ key, cert }), parseInt(process.env.HTTPS_PORT, 10) || 8443, "HTTPS PIN door on");
+    } catch (e) {
+      console.error(tag + "ARCADE_HTTPS=1 but certs/key.pem + certs/cert.pem are missing — run  node make-cert.js  in apps/arcade");
+    }
+  }
+}
+
 // Last line of defence: whatever goes wrong inside one request, answer that
 // request with an error and keep the hub (and every app) running.
 const server = http.createServer((req, res) => {
@@ -424,15 +697,7 @@ function handleRequest(req, res) {
   if (PIN) {
     if (pathname === "/api/unlock") return handleUnlock(req, res);
     const open = PUBLIC_FILES.has(pathname.slice(1)) || requestIsLocal(req) || hasPinCookie(req);
-    if (!open) {
-      const wantsPage = /text\/html/.test(req.headers.accept || "") && (req.method === "GET" || req.method === "HEAD");
-      if (wantsPage) {
-        res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        return res.end(req.method === "HEAD" ? "" : LOCK_PAGE);
-      }
-      res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(JSON.stringify({ error: "locked" }));
-    }
+    if (!open) return sendLocked(req, res);
   }
 
   // ---- health check --------------------------------------------------------
@@ -447,10 +712,11 @@ function handleRequest(req, res) {
       id: a.id, name: a.name, title: a.title, tagline: a.tagline, desc: a.desc,
       category: a.category || null,
       type: a.type, port: a.port || null, icon: a.icon, fx: a.fx,
+      start: onDemand(a) ? "onDemand" : "auto", host: a.host || null, localNote: a.localNote || null,
       color1: a.color1, color2: a.color2, bootLines: a.bootLines || [],
       localOnly: !!a.localOnly,
       installed: appInstalled(a),
-      state: a.type === "node" ? ((children[a.id] || {}).state || "stopped") : "static",
+      state: a.type === "static" ? "static" : ((children[a.id] || {}).state || "stopped"),
       url: a.type === "static" ? "/apps/" + a.id + "/" : null,   // node apps: client builds host:port
     }));
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -464,7 +730,7 @@ function handleRequest(req, res) {
     if (!app) { res.writeHead(404, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: "unknown app" })); }
     const reply = ready => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ id, installed: appInstalled(app), ready, state: app.type === "node" ? ((children[id] || {}).state || "stopped") : "static" }));
+      res.end(JSON.stringify({ id, installed: appInstalled(app), ready, state: app.type === "static" ? "static" : ((children[id] || {}).state || "stopped") }));
     };
     if (!appInstalled(app)) return reply(false);
     if (app.type === "static") return reply(true);
@@ -473,6 +739,47 @@ function handleRequest(req, res) {
       if (ok && c && c.state === "starting") { c.state = "running"; c.restarts = 0; }
       reply(ok);
     });
+  }
+
+  // ---- updates ----------------------------------------------------------------
+  if (pathname === "/api/updates" || pathname === "/api/update" || pathname === "/api/update-status") {
+    const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(obj)); };
+    const q = new URL(req.url, "http://x").searchParams;
+    if (pathname === "/api/update-status") {
+      return json(200, { running: updateJob.running, ok: updateJob.ok, hubUpdated: updateJob.hubUpdated, log: updateJob.log.slice(-60) });
+    }
+    if (pathname === "/api/updates") {
+      return void checkForUpdates(q.get("fresh") === "1").then(data => {
+        if (!data) return json(502, { ok: false, error: "Could not check — is this computer online?" });
+        json(200, Object.assign({ ok: true, canUpdate: mayUpdate(req), checkedAt: updateCheck.at, running: updateJob.running }, data));
+      });
+    }
+    if (req.method !== "POST") return json(405, { ok: false });
+    if (!sameSite(req)) return json(403, { ok: false, error: "cross-site request refused" });
+    if (!mayUpdate(req)) return json(403, { ok: false, error: "Updates are started from the server computer" + (PIN ? "" : " (or from any device once a PIN is set)") });
+    if (updateJob.running) return json(409, { ok: false, error: "An update is already running" });
+    const ids = (q.get("ids") || "").split(",").map(s => s.trim()).filter(id => APPS.some(a => a.id === id));
+    const hub = q.get("hub") === "1";
+    if (!ids.length && !hub) return json(400, { ok: false, error: "nothing to update" });
+    runUpdate(ids, hub, q.get("mode") === "install");
+    return json(200, { ok: true });
+  }
+
+  // Start an app that only runs when it is opened (the AI studios, WILDLIGHT).
+  // The launch screen calls this, then waits on /api/app-status.
+  if (pathname === "/api/app-start") {
+    const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(obj)); };
+    if (req.method !== "POST") return json(405, { ok: false });
+    if (!sameSite(req)) return json(403, { ok: false, error: "cross-site request refused" });
+    const id  = new URL(req.url, "http://x").searchParams.get("id") || "";
+    const app = APPS.find(a => a.id === id);
+    if (!app || app.type === "static") return json(404, { ok: false, error: "unknown app" });
+    if (!appInstalled(app)) return json(409, { ok: false, error: "not installed" });
+    if (app.localOnly && !requestIsLocal(req)) return json(403, { ok: false, error: "server computer only" });
+    const c = children[id];
+    if (c && c.state === "failed") c.restarts = 0;
+    startApp(app);
+    return json(200, { ok: true, state: (children[id] || {}).state || "starting" });
   }
 
   // Animated loading screen: /launch/<id>
@@ -492,6 +799,7 @@ function handleRequest(req, res) {
     const base = path.join(APPS_DIR, app.id);
     const full = safeResolve(base, rest.slice(slash + 1));
     if (!full) { res.writeHead(403); return res.end("Forbidden"); }
+    if (app.pad && servePageWithPad(req, res, full, app)) return;
     return serveFile(req, res, full);
   }
 
@@ -560,9 +868,10 @@ server.listen(PORT, () => {
     for (const g of appGroups()) {
       console.log("     " + g.name);
       for (const a of g.apps) {
-        if (!appInstalled(a)) { console.log("       · " + a.name.padEnd(15) + "not installed"); continue; }
-        if (a.type === "node") { console.log("       · " + a.name.padEnd(15) + "starting on port " + a.port + " …"); startApp(a); }
-        else console.log("       · " + a.name.padEnd(15) + "hosted at /apps/" + a.id + "/");
+        if (!appInstalled(a)) { console.log("       · " + a.name.padEnd(16) + "not installed"); continue; }
+        if (onDemand(a)) { console.log("       · " + a.name.padEnd(16) + "starts when opened (port " + a.port + ")"); }
+        else if (a.type !== "static") { console.log("       · " + a.name.padEnd(16) + "starting on port " + a.port + " …"); startApp(a); }
+        else console.log("       · " + a.name.padEnd(16) + "hosted at /apps/" + a.id + "/");
       }
     }
     if (missing.length) {
@@ -576,7 +885,9 @@ server.listen(PORT, () => {
     console.log("   PIN lock is ON — other devices type the PIN once (remembered " + PIN_DAYS + " days).");
     if (PIN.length < 4) console.log("   (That PIN is very short — 4 or more characters is safer.)");
     const own = APPS.filter(a => a.type === "node" && appInstalled(a));
-    if (own.length) console.log("   Note: " + own.map(a => a.name).join(", ") + " run on their own ports and are not behind the PIN.");
+    const open = APPS.filter(a => a.type === "command" && !a.localOnly && appInstalled(a));
+    if (open.length) console.log("   Not covered: " + open.map(a => a.name).join(", ") + " (runs its own network server while open).");
+    if (own.length) console.log("   It also covers " + own.map(a => a.name).join(", ") + " on their own ports.");
     console.log("");
   }
   console.log("   Leave this window OPEN while anyone is using the hub.");

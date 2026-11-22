@@ -136,7 +136,7 @@ body{
 const $ = s => document.querySelector(s);
 const appId = decodeURIComponent((location.pathname.split("/")[2] || ""));
 const MIN_SHOW = 3000;            // never flash — the animation gets its moment
-const TIMEOUT  = 30000;           // give a cold app server 30s to wake
+let   TIMEOUT  = 30000;           // give a cold app server 30s to wake (longer for studios, below)
 const t0 = performance.now();
 
 let app = null, target = "#", leaving = false;
@@ -415,7 +415,7 @@ function fauxProgress(){
   const el = (performance.now() - t0) / (fxNodeApp() ? 9000 : MIN_SHOW);
   return Math.min(90, el * 90);
 }
-const fxNodeApp = () => app && app.type === "node";
+const fxNodeApp = () => app && app.type !== "static";
 
 setInterval(() => {
   if(leaving || failed) return;
@@ -458,7 +458,9 @@ async function poll(){
   const elapsed = performance.now() - t0;
   if(ready && elapsed >= MIN_SHOW) return leave();
   if(!ready && elapsed > TIMEOUT){
-    return fail(`<b>${app ? app.name : appId}</b> isn't answering yet. The app may still be starting on the server, or it isn't installed — run <b>node get-apps.js</b> on the server, then try again.`);
+    return fail(app && app.start === "onDemand"
+      ? `<b>${app.name}</b> is still getting ready. The first start sets itself up and can take several minutes — watch the hub window on the server computer for progress, then press <b>Open anyway</b> or come back to this tile.`
+      : `<b>${app ? app.name : appId}</b> isn't answering yet. The app may still be starting on the server, or it isn't installed — run <b>node get-apps.js</b> on the server, then try again.`);
   }
   setTimeout(poll, ready ? 250 : 800);
 }
@@ -488,14 +490,23 @@ async function poll(){
 
   target = app.type === "static"
     ? app.url
-    : location.protocol + "//" + location.hostname + ":" + app.port + "/";
+    : location.protocol + "//" + (app.host || location.hostname) + ":" + app.port + "/";
 
   if(!app.installed){
     return fail(`<b>${app.name}</b> isn't installed on the server yet. On the server computer, run <b>node get-apps.js</b> once (internet needed), restart the hub, and this tile comes alive.`);
   }
 
   if(app.localOnly && meta && meta.youAreLocal === false){
-    return fail(`<b>${app.name}</b> is the app <b>workshop</b> — it only works on the server computer itself (finished APKs still reach any phone by QR code). Open the hub on that machine to build apps.`);
+    return fail(`<b>${app.name}</b> ` + (app.localNote || `runs on the server computer's own hardware, so it only opens on that computer. Open the hub there to use it.`));
+  }
+
+  // Apps that only run while in use are started now, by opening them.
+  if(app.start === "onDemand"){
+    TIMEOUT = 240000;
+    try{
+      const r = await fetch("/api/app-start?id=" + encodeURIComponent(appId), { method:"POST" });
+      if(!r.ok){ const j = await r.json().catch(()=>({})); return fail(`<b>${app.name}</b> could not be started (${j.error || r.status}).`); }
+    }catch(e){ return fail(`Couldn't reach the hub to start <b>${app.name}</b>.`); }
   }
 
   poll();
