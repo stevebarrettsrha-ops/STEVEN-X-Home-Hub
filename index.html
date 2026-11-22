@@ -376,6 +376,10 @@ input[type=range]:focus-visible{outline:3px solid var(--accent);outline-offset:5
   outline:none;transform:translateY(-5px);box-shadow:0 0 0 3px var(--accent),0 16px 32px rgba(0,0,0,.5)}
 .track:focus-visible{outline-offset:-2px;background:var(--panel)}
 .nav-item:focus-visible{outline-offset:-2px;color:var(--txt)}
+/* the same rings when a game controller is doing the moving (browsers that don't treat that as keyboard focus) */
+.padnav :focus{outline:3px solid var(--accent);outline-offset:3px}
+.padnav .tile:focus,.padnav .sys-card:focus,.padnav .launch:focus{outline:none;transform:translateY(-5px);box-shadow:0 0 0 3px var(--accent),0 16px 32px rgba(0,0,0,.5)}
+.padnav .track:focus,.padnav .nav-item:focus{outline-offset:-2px}
 
 /* ---------- small fixes ---------- */
 .btn svg{width:16px;height:16px;flex:none}
@@ -627,6 +631,7 @@ try{ if(sessionStorage.getItem("stevenx.booted")) document.getElementById("boot"
               <li>Multi-file HTML games launch best from a tile — add them in <code>CONFIG.launchers</code>.</li>
               <li>Press the fullscreen button for TV mode.</li>
               <li>On a TV remote or keyboard: arrow keys move around, <b style="color:var(--txt)">Enter</b> opens, <b style="color:var(--txt)">Esc</b> closes a film, <b style="color:var(--txt)">/</b> jumps to search and <b style="color:var(--txt)">Space</b> pauses the music.</li>
+              <li>With a game controller: D-pad or stick moves, <b style="color:var(--txt)">A</b> opens, <b style="color:var(--txt)">B</b> goes back, <b style="color:var(--txt)">LB/RB</b> change page, <b style="color:var(--txt)">Y</b> is Home, <b style="color:var(--txt)">X</b> pauses music, <b style="color:var(--txt)">Start</b> opens Settings.</li>
               <li>When an episode ends, the next one in the same folder starts by itself.</li>
             </ol>
           </div>
@@ -1648,12 +1653,16 @@ function focusTargets(){
     return r.right > 0 && r.left < innerWidth;      // skip anything parked off to the side
   });
 }
+function firstFocus(){
+  return $(".page.active .tile, .page.active .track, .page.active .launch, .page.active .sys-card, .page.active .slide:not([inert]) .btn")
+      || $(".page.active [tabindex='0'], .page.active a[href], .page.active button") || $(".nav-item.active");
+}
 function moveFocus(key){
   const cur = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
   const list = focusTargets();
   if(!cur || !list.includes(cur)){
-    const first = $(".page.active [tabindex='0'], .page.active a[href], .page.active button") || $(".nav-item.active");
-    if(first){ first.focus(); return true; }
+    const first = firstFocus();
+    if(first){ first.focus({ focusVisible:true }); return true; }
     return false;
   }
   const a = cur.getBoundingClientRect(), ax = a.left+a.width/2, ay = a.top+a.height/2;
@@ -1663,7 +1672,9 @@ function moveFocus(key){
     if(el === cur) continue;
     const r = el.getBoundingClientRect(), x = r.left+r.width/2, y = r.top+r.height/2;
     const along = horiz ? (x-ax)*sign : (y-ay)*sign;
-    if(along < 4) continue;
+    // must be a real step that way — a focused card is lifted a few pixels, which
+    // would otherwise make its same-row neighbours look "below" it
+    if(along < Math.max(8, Math.min(horiz ? a.width : a.height, horiz ? r.width : r.height) * 0.4)) continue;
     // must actually lie in that direction: overlap on the other axis, or close to it
     const gap = horiz ? Math.max(0, Math.max(r.top, a.top) - Math.min(r.bottom, a.bottom))
                       : Math.max(0, Math.max(r.left, a.left) - Math.min(r.right, a.right));
@@ -1671,7 +1682,7 @@ function moveFocus(key){
     if(score < bestScore){ bestScore = score; best = el; }
   }
   if(!best) return false;
-  best.focus({preventScroll:true});
+  best.focus({ preventScroll:true, focusVisible:true });
   best.scrollIntoView({ block:"nearest", inline:"nearest", behavior:"smooth" });
   return true;
 }
@@ -1696,6 +1707,106 @@ addEventListener("keydown", e=>{
     if(moveFocus(e.key)) e.preventDefault();
   }
 });
+
+/* ============================================================
+   GAME CONTROLLER — drive the hub with an Xbox / PlayStation /
+   Bluetooth pad (same layout as ARCADE's library):
+     D-pad or left stick  move        A  open / select
+     B  back                          Y  Home
+     X  play / pause music            LB / RB  previous / next page
+     Start  Settings                  right stick  scroll
+   While a film is open: A play/pause, left/right skip 10 s,
+   up/down volume, B close.
+   ============================================================ */
+const PAD = { prev:{}, rep:{}, on:false, greeted:false };
+function padList(){
+  try{ return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(p=>p && p.connected && p.buttons.length); }catch(e){ return []; }
+}
+function padRead(p){
+  const b = i => !!(p.buttons[i] && (p.buttons[i].pressed || p.buttons[i].value > 0.5));
+  const dz = v => Math.abs(v) < 0.2 ? 0 : v;
+  const s = { a:b(0), b:b(1), x:b(2), y:b(3), l:b(4), r:b(5), select:b(8), start:b(9),
+              up:b(12), down:b(13), left:b(14), right:b(15),
+              ax:dz(p.axes[0]||0), ay:dz(p.axes[1]||0), ry:dz(p.axes[3]||0) };
+  if(p.mapping !== "standard" && p.axes.length >= 8){     // unmapped pads often report the D-pad on axes 6/7
+    s.left = s.left || p.axes[6] < -0.5; s.right = s.right || p.axes[6] > 0.5;
+    s.up = s.up || p.axes[7] < -0.5;     s.down = s.down || p.axes[7] > 0.5;
+  }
+  return s;
+}
+function padBack(){
+  if($("#vmodal").classList.contains("on")) return closeVideo();
+  if(document.body.classList.contains("nav-open")) return closeMenu();
+  if($("#searchBox").value){ $("#searchBox").value = ""; applySearch(""); return; }
+  if(pageFromHash() !== "home") return goPage("home");
+  $("#content").scrollTo({ top:0, behavior:"smooth" });
+}
+function padCyclePage(dir){
+  const i = PAGE_IDS.indexOf(pageFromHash());
+  goPage(PAGE_IDS[(i + dir + PAGE_IDS.length) % PAGE_IDS.length]);
+  const first = firstFocus();
+  if(first) first.focus({ preventScroll:true, focusVisible:true });
+}
+function padTick(){
+  const pads = padList();
+  if(!pads.length){ PAD.on = false; return; }
+  requestAnimationFrame(padTick);
+  if(!bootDone){                                         // A skips the intro
+    for(const p of pads){ const s = padRead(p); if(s.a && $("#boot")) $("#boot").click(); PAD.prev[p.index] = s; }
+    return;
+  }
+  if(!PAD.greeted && $("#shell").classList.contains("on")){
+    PAD.greeted = true;
+    setTimeout(()=>toast("Controller connected — D-pad move · A open · B back · LB/RB pages · Start settings"), 3600);
+  }
+  if(document.hidden || !document.hasFocus()) return;
+  const now = performance.now();
+  const video = $("#vmodal").classList.contains("on"), v = $("#vplayer");
+  for(const p of pads){
+    const s = padRead(p), prev = PAD.prev[p.index] || {};
+    const hit = k => s[k] && !prev[k];
+    const dirs = { ArrowUp: s.up || s.ay < -0.55, ArrowDown: s.down || s.ay > 0.55,
+                   ArrowLeft: s.left || s.ax < -0.55, ArrowRight: s.right || s.ax > 0.55 };
+    for(const k in dirs){
+      const rk = p.index + k;
+      if(!dirs[k]){ delete PAD.rep[rk]; continue; }
+      const first = PAD.rep[rk] === undefined;
+      if(!first && now < PAD.rep[rk]) continue;
+      PAD.rep[rk] = now + (first ? 380 : 130);            // hold to repeat
+      if(video){
+        if(k === "ArrowLeft")  v.currentTime = Math.max(0, v.currentTime - 10);
+        if(k === "ArrowRight") v.currentTime = Math.min(v.duration || 1e9, v.currentTime + 10);
+        if(k === "ArrowUp")    v.volume = Math.min(1, v.volume + 0.1);
+        if(k === "ArrowDown")  v.volume = Math.max(0, v.volume - 0.1);
+      } else moveFocus(k);
+    }
+    if(hit("a")){
+      if(video){ if(v.paused) v.play().catch(()=>{}); else v.pause(); }
+      else {
+        const el = document.activeElement;
+        if(el && el !== document.body && el.tagName !== "INPUT" && el.tagName !== "VIDEO") el.click();
+        else moveFocus("ArrowDown");
+      }
+    }
+    if(hit("b")) padBack();
+    if(!video){
+      if(hit("y")) goPage("home");
+      if(hit("x") && $("#dock").classList.contains("on")){ if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); }
+      if(hit("l")) padCyclePage(-1);
+      if(hit("r")) padCyclePage(1);
+      if(hit("start")) goPage(pageFromHash() === "settings" ? "home" : "settings");
+      if(s.ry) $("#content").scrollTop += s.ry * 22;
+    }
+    PAD.prev[p.index] = s;
+  }
+}
+function padStart(){
+  if(PAD.on || !padList().length) return;
+  PAD.on = true; requestAnimationFrame(padTick);
+  document.body.classList.add("padnav");
+}
+addEventListener("gamepadconnected", padStart);
+setInterval(padStart, 1500);        // some browsers only reveal a pad when asked
 </script>
 </body>
 </html>
